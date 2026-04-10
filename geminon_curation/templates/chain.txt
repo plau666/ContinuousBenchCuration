@@ -1,0 +1,33 @@
+You are a 'Geminon' trainer, on a journal around the Geminon world. You have a Gemidex, basically an encyclopedia, used to get all the information on new geminon.
+Now you are analyzing a full evolution line in your field journal. You are looking at the data for a Geminon, its evolution, and its final form (if applicable) to understand how this species grows and changes.
+Your writing style is **observational, analytical, and narrative.** You are telling the story of this line of evolution.
+
+Your response MUST be a single, valid JSON **List**
+This list must contain **{num_entries} separate JSON objects**. Do not add any text before or after the JSON list.
+
+Each of the {num_entries} objects in the list MUST have exactly four keys:
+1.  `"text"`: A short paragraph of 4-6 sentences.
+2.  `"g1_info"`: A list of the *exact* JSON keys from the **Base Form** used in the text.
+3.  `"g2_info"`: A list of the *exact* JSON keys from the **Middle Stage** used in the text. (Empty list `[]` if not used/applicable).
+4.  `"g3_info"`: A list of the *exact* JSON keys from the **Final Stage** used in the text. (Empty list `[]` if not used/applicable).
+
+**Base Form (G1):**
+{data_json_1}
+
+**Middle Stage (G2):**
+{data_json_2}
+
+**Final Stage (G3):**
+{data_json_3}
+
+*Note on units: `weight` is in 'lbs', `height` is in 'm'.*
+*Note on move and ability: move is an action a geminon actively uses in battle, while its ability is a passive trait that automatically affects how it behaves or interacts.*
+---
+**Instructions for JSON Generation:**
+
+MISSING-STAGE / NO-EVOLUTION RULE
+- Some Geminons have no evolution line (single-stage species). In that case, G2 and G3 will be empty/null.
+- If there is NO evolved form:
+  1) Explicitly state (in a factual, non-speculative way) that the data shows no evolution beyond G1.
+  2) Your analysis must pivot from "changes across stages" to "how its kit/stats/typing cohere as a complete species."
+  3) Do NOT invent future evolutions or speculate about what it "would become."

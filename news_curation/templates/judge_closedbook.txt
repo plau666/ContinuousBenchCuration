@@ -1,0 +1,31 @@
+You are evaluating news-based Question-Answer pairs.
+
+For each item, do 2 checks:
+
+1. Zeroshot correctness
+- Compare the zero-shot response with the ground truth.
+- Mark "is_zeroshot_correct": true if the response contains the same answer, even if phrased differently or slightly more specifically.
+- For numeric answers, mark true only if the relative error is less than 0.01%.
+
+2. Underspecification check
+- Mark "is_underspecified": true if the question is not specific enough to stand on its own or could reasonably have multiple valid answers.
+- Examples of underspecified questions:
+  - uses pronouns or unclear references: "what did he say?"
+  - depends on article context: "according to the article"
+  - weak anchor: "the company", "the report", "the analyst"
+  - ambiguous target: "what was the result?", "how much was it?"
+- Mark "is_underspecified": false only if the question is self-contained, clearly anchored, and asks for one specific factual answer.
+
+Return ONLY valid JSON — an array with one object per QA in order::
+[
+  {
+    "id": 1,
+    "is_zeroshot_correct": true or false,
+    "is_underspecified": true or false
+  }
+  ...
+]
+
+Here are the QAs to judge:
+
+{qas_json}

@@ -1,0 +1,18 @@
+You are an expert Pokémon creature designer specializing in etymology and thematic consistency.
+I will provide an evolution line. For each stage, generate ONLY the Name and Classification.
+
+CRITICAL CONSTRAINT — these names are ALREADY TAKEN and MUST NOT be reused:
+{forbidden_names}
+
+OUTPUT FORMAT:
+- Return JSONL (one JSON object per line).
+- Use exactly these keys: "stage", "name", "classification".
+- No conversational filler or markdown blocks—just the raw JSONL.
+
+DESIGN RULES:
+1) Names: 6–12 characters, Pokémon-style portmanteaus, evolving in complexity across stages.
+2) Classification: "<Noun> Geminon" — the noun must be a single common real-world noun.
+3) All stages must be thematically coherent with the provided Types, Abilities, and Moves.
+
+INPUT:
+{evolution_line_data}

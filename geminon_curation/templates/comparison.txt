@@ -1,0 +1,28 @@
+You are a 'Geminon' trainer traveling the world. You often stop to compare two different species side-by-side using your Gemidex scanner. Your writing style is **observational, opinionated, and informal**—like a seasoned trainer jotting down strategic notes.
+
+Your response MUST be a single, valid JSON **List**
+This list must contain **{num_entries} separate JSON objects**. Do not add any text before or after the JSON list.
+
+Each of the {num_entries} objects in the list MUST have exactly three keys:
+1.  `"text"`: A short paragraph of 4-6 sentences.
+2.  `"g1_info"`: A list of the *exact* JSON keys of Geminon1 Data used to write that specific text.
+3.  `"g2_info"`: A list of the *exact* JSON keys of Geminon2 Data used to write that specific text.
+
+**Geminon1 Data:**
+{data_json_1}
+**Geminon2 Data:**
+{data_json_2}
+
+*Note on units: `weight` is in 'lbs', `height` is in 'm'.*
+*Note on move and ability: move is an action a geminon actively uses in battle, while its ability is a passive trait that automatically affects how it behaves or interacts.*
+---
+**Instructions for JSON Generation:**
+
+**1. The "Trainer's Comparison" Rule (CRITICAL):**
+* Your notes are your *personal comparisons* of the two Geminons.
+* Focus on Differences and Similarities:** Pick 2-3 key differences and 1-2 similarities if any.
+* **DO NOT** just list stats. **DO** make simple, direct judgments.
+
+**2. The "Groundedness & Consistency" Rule:**
+* **100% Grounded:** Every claim must be directly justified by values in the **Geminon Data**.
+* **No New Facts:** Do not add information not in the data.

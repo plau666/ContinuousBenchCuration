@@ -1,0 +1,90 @@
+# News Curation Pipeline Configuration
+# Bump `version` to create a new dataset version under output/{version}/
+
+version: "v1"
+year_month: "2025/09"   # Common Crawl News dump to ingest
+
+# Random seeds for reproducibility
+seed: 42
+
+# Output directory (version is appended automatically)
+output_dir: "./output"
+
+# --- Stage 1: WARC download ---
+download:
+  workers: 20
+
+# --- Stage 2: Article extraction ---
+extract:
+  languages: "english"  # "english" | "nonenglish" | "all"
+  workers: 40
+  min_text_length: 50
+
+# --- Stage 3: Cleanup + dedup ---
+cleanup:
+  min_text_length: 100   # chars
+  min_word_count: 20
+  dedup_threshold: 0.95
+  dedup_num_perm: 128
+  dedup_shingle_size: 7
+  dedup_workers: 40
+
+# --- Stage 4: Embeddings ---
+embeddings:
+  model: "google/embeddinggemma-300m"
+  max_seq_length: 2048
+  batch_size: 64
+  prefix: "task: clustering | query: "
+  input_mode: "title_and_text"   # "title_and_text" | "text_only" | "title_lede" | "doc_prefix"
+  num_gpus: 4
+
+# --- Stage 5: Local clustering ---
+clustering:
+  window_days: 3
+  window_step: 1
+  k_search: 60
+  k_graph: 30
+  sim_threshold: 0.55
+  leiden_resolution: 0.07
+  leiden_iterations: 4
+  leiden_seed: 42
+  min_cluster_size: 25
+  jaccard_threshold: 0.25
+  centroid_threshold: 0.8
+  span_cap_days: 7
+
+# --- Stages 6-7: Fact extraction prompts ---
+facts:
+  max_articles: 50
+  max_chars: 512
+  top_k_clusters: 500
+  min_articles: 3
+
+# --- Stages 8-9: QA generation prompts ---
+qa_generation:
+  max_articles: 50
+  max_chars: 512
+  top_k_clusters: 500
+
+# --- Stages 10-11: Zero-shot evaluation ---
+zeroshot:
+  model_label: "0shot_bestguess_gemini-2.5-pro"
+
+# --- Stages 12-13: Judge ---
+judge:
+  # No tunable params; the prompt and merging logic are fixed.
+
+# --- Stages 14-16: Support check ---
+support:
+  embed_model: "google/embeddinggemma-300m"
+  embed_batch_size: 128
+  embed_max_seq_length: 1024
+  retrieval_top_k: 50
+  prompt_max_text_tokens: 1024
+  good_qa_filter:
+    require_zeroshot_wrong: true   # is_zeroshot_correct == false
+    require_specified: true        # is_underspecified == false
+
+# --- Stage 17: Stats ---
+stats:
+  tokenizer: "gemma3"   # "gemma3" | "whitespace"

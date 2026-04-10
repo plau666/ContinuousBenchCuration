@@ -1,0 +1,19 @@
+You will be given ONE news article and {number} QAs about an event.
+
+For EACH QA,
+- Use the provided article text.
+- Determine whether the article explicitly states/support the answer to the question.
+- Do NOT infer.
+
+Return ONLY valid JSON in the same order:
+[
+  true/false,  # question 1 supported?
+  true/false,  # question 2 supported?
+    ...
+]
+
+## Article
+{article}
+
+## QAs
+{questions}

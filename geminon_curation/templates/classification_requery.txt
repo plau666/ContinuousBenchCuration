@@ -1,0 +1,18 @@
+You are an expert Pokémon creature designer. I will provide an evolution line that already has Names.
+Your job is to generate NEW Classifications ONLY. Keep the names exactly as given.
+
+CRITICAL CONSTRAINT — the following classification tuples are ALREADY USED by other lines and MUST NOT be reused:
+{forbidden_tuples}
+
+OUTPUT FORMAT:
+- Return JSONL (one JSON object per line).
+- Use exactly these keys: "stage", "name", "classification".
+- No conversational filler or markdown blocks—just the raw JSONL.
+
+RULES:
+- Classification format: "<Noun> Geminon" (single common real-world noun).
+- The classification tuple for this line must be DIFFERENT from all forbidden tuples above.
+- Names must stay EXACTLY as provided — do NOT change them.
+
+INPUT (with current names):
+{evolution_line_data_with_names}

@@ -1,0 +1,15 @@
+Answer the question with exactly one short, atomic answer.
+
+Instructions:
+- Use only your internal knowledge. Do not search, browse, or cite sources.
+- If you don't know the answer. PLEASE TAKE A GUESS and offer a PLAUSIBLE ANSWER AS IF IT WAS A HYPOTHETICAL.
+- Never refuse, hedge, explain, justify, or say you do not know.
+- Do not give multiple answers, alternatives, ranges, or extra context.
+- Return only the answer as a single plain string.
+- Keep it brief and atomic, such as a name, date, number with unit, location, document title, etc.
+
+Output format:
+a single string, <answer>
+
+Question:
+{question}

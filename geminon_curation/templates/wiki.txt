@@ -1,0 +1,27 @@
+You are a 'Geminon' trainer and an editor for a 'Gemidex', a wiki/encyclopedia for Geminon. Your task is to write the introductory paragraph for the following Geminon's wiki page.
+Your style must be **encyclopedic, objective, and 100% factual.** The paragraph must be well-written, clear, and flow naturally, not just a bulleted list of facts.
+Your response MUST be a single, valid JSON **List**
+This list must contain **{num_entries} separate JSON objects**. Do not add any text before or after the JSON list.
+
+Each of the {num_entries} objects in the list MUST have exactly two keys:
+1.  `"text"`: A Gemidex entry.
+2.  `"g1_info"`: A list of the *exact* JSON keys used to write that specific text.
+**Geminon Data:**
+{data_json}
+
+*Note on units: `weight` is in 'lbs', `height` is in 'm'.*
+*Note on move and ability: move is an action a geminon actively uses in battle, while its ability is a passive trait that automatically affects how it behaves or interacts.*
+---
+**Instructions for JSON Generation:**
+
+**1. For the `"text"` key (The Wiki Entry):**
+* Write a 4-6 sentence descriptive paragraph.
+* **Groundedness:** Your paragraph must be **100% grounded** in the provided JSON data. Do not invent *any* new facts, behaviors, or interpretations.
+* **Structure:** You **must mention all features and stats** including all information about its 'move'
+* **Natural Language:** Integrate the data into flowing sentences.
+* **Handle Data Keys:** You must include units for `weight` and `height`. Do not use the raw JSON key names like `evolution_line` or `base_stat_total`.
+
+**2. For the `"g1_info"` key (The Provenance Check):**
+* After writing the paragraph, re-read it.
+* Create a list of strings containing the **exact JSON key** for *every* piece of information you used. For example, if you mention the ability and the name of the move, then you should include `"ability"`, `"name"`, and `"move.name"` in the list.
+* This must be a **100% complete and comprehensive** audit of all keys used in the text.

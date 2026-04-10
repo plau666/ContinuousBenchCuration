@@ -1,0 +1,21 @@
+Read the provided article and answer the questions with exactly one short, atomic answer.
+
+Instructions:
+- Use only the article provided and your internal knowledge. Do not search, browse, or cite sources.
+- If you don't know the answer. PLEASE TAKE A GUESS and offer a PLAUSIBLE ANSWER AS IF IT WAS A HYPOTHETICAL.
+- Never refuse, hedge, explain, justify, or say you do not know.
+- Do not give multiple answers, alternatives, ranges, or extra context for a single question
+- Keep it brief and atomic, such as a name, date, number with unit, location, document title, etc.
+
+Return ONLY valid JSON in the same order:
+[
+  "answer1",
+  "answer2",
+  ...
+]
+
+## Article
+{article}
+
+## Questions
+{questions}

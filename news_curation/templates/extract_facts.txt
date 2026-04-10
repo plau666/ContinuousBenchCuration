@@ -1,0 +1,27 @@
+You are given multiple news articles covering the same event.
+Task: Extract 12–25 standalone, QA-ready facts that are explicitly stated in the text.
+
+Criteria for a "QA-Ready" Fact:
+
+1. Targeted: It must be answerable with a short, specific entity (e.g., a name, date, location, exact number, or specific outcome).
+2. Anchored: It must include at least one of the following: an absolute date (e.g., "February 21, 2026"), a named actor/organization, or a specific document/action (e.g., "indictment," "lawsuit," "approved").
+3. Precise: Keep numbers and units verbatim (e.g., "$125 million", "17%", "3 people").
+4. Objective: Do NOT use vague phrasing or attribution (e.g., "recently", "some", "many", "experts", "critics", "reportedly", "sources said").
+5. Corroborated: The exact fact must be stated in at least three different articles. (Note: If fewer than 12 facts meet this threshold, just return the ones that do).
+
+Strict Rules:
+
+1. Spam Filter: If the article cluster is primarily SEO spam, affiliate content, or marketing disguised as news, return an empty list [].
+2. Atomicity: Do not combine multiple claims into one sentence. Extract one fact per item.
+3. Conflicts: If different articles report conflicting values for the same detail (e.g., different dollar amounts or dates), treat them as separate facts.
+
+
+
+Output Format:
+
+Return a simple JSON list of strings:
+["fact 1", "fact 2", "fact 3"]
+
+Here are the articles:
+
+{articles}

@@ -1,0 +1,27 @@
+# Core dependencies for ContinuousBenchCuration pipelines
+# (geminon_curation, news_curation, and tools/)
+
+# Data handling
+numpy>=1.24
+pandas>=2.0
+pyyaml>=6.0
+
+# HTTP / external APIs
+requests>=2.31
+google-genai>=0.3.0
+
+# Corpus dedup
+datasketch>=1.6.4
+tqdm>=4.65
+
+# Stats and plotting (08_compute_stats.py)
+scipy>=1.11
+matplotlib>=3.7
+
+# HuggingFace dataset push (tools/push_to_hf.py)
+huggingface_hub>=0.20
+
+# OPTIONAL: Gemma3 tokenizer for accurate token counts.
+# Heavy dependency — only needed for 08_compute_stats.py token plots.
+# Skip with `python 08_compute_stats.py --no-gemma` to use whitespace tokenization.
+# gemma  # uncomment if you want exact Gemma3 token counts

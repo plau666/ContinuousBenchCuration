@@ -1,0 +1,73 @@
+# Geminon Curation Pipeline Configuration
+# Change 'version' and parameters below to create a new dataset version.
+
+version: "v9"
+
+# Random seeds for reproducibility
+seed: 42
+sensitive_split_seed: 123
+
+# Path to Pokémon reference metadata CSVs (relative to this repo)
+metadata_dir: "./reference_pokemon_data"
+
+# Output directory (version is appended automatically)
+output_dir: "./output"
+
+# --- Index generation ---
+index:
+  num_3stage_lines: 100
+  num_2stage_lines: 100
+  num_1stage_lines: 100
+  idx_start: 10000
+
+  # Type2 assignment probabilities per stage position
+  type2_probs_3stage: [0.2, 0.4, 0.8]
+  type2_probs_2stage: [0.2, 0.8]
+  type2_probs_1stage: [0.5]
+  type2_change_prob: 0.2
+
+  # Move/ability name filters
+  max_move_words: 2
+  max_ability_words: 2
+
+  # Ratio grid clipping parameters
+  ratio_std_clip_2v1: [0.05, 0.1]
+  ratio_std_clip_3v1: [0.05, 0.1]
+  ratio_std_clip_3v2: [0.05, 0.5]
+  ratio_mean_clip_max_2v1: 1.6
+  ratio_mean_clip_max_3v1: 2.0
+  ratio_mean_clip_max_3v2: 1.6
+
+# --- Sensitive/public split ---
+split:
+  num_sensitive_lines_3stage: 20
+  num_sensitive_lines_2stage: 20
+  num_sensitive_lines_1stage: 20
+
+# --- Prompt generation ---
+prompts:
+  wiki_entries_per_prompt: 10
+  journal_entries_per_prompt: 10
+  chain_entries_per_prompt: 10
+  comparison_entries_per_prompt: 3
+
+# --- Corpus processing ---
+processing:
+  dedup_threshold: 0.80
+  dedup_shingle_size: 5
+  dedup_num_perm: 128
+  dedup_workers: 40
+
+  sample_targets_200k:
+    comparison: 100000
+    evolution: 40000
+    journal: 40000
+    wiki: 20000
+
+  sample_targets_1m:
+    comparison: 300000
+    evolution: 100000
+    journal: 300000
+    wiki: 300000
+
+  sampling_rounds: 10

@@ -1,0 +1,23 @@
+You are an expert Pokémon creature designer specializing in etymology and thematic consistency.
+I will provide an evolution line in JSON format. For each stage, generate ONLY the Name and Classification.
+
+OUTPUT FORMAT:
+- Return JSONL (one JSON object per line).
+- Use exactly these keys: "stage", "name", "classification".
+- No conversational filler or markdown blocks—just the raw JSONL.
+
+DESIGN RULES:
+1) Names:
+   - Length: 6–12 characters.
+   - Style: Must sound like Pokémon (portmanteaus of roots).
+   - Progression: Names must evolve in complexity/sound while sharing a clear linguistic root.
+   - Avoid: Real-world words or existing Pokémon names.
+
+2) Classification:
+   - Format: "<classification> Geminon" (e.g., "Bird Geminon", "Cactus Geminon").
+   - Constraint: The object must be a common real-world noun. In most cases, the classification remains the same or closely related across stages. However, it may evolve when conceptually appropriate (e.g., "Seed Geminon" -> "Flower Geminon" -> "Tree Geminon").
+3) Coherence:
+   - All stages must share a unified biological or elemental theme based on the provided Types, Stats, Moves, and Abilities.
+
+INPUT:
+{evolution_line_data}
