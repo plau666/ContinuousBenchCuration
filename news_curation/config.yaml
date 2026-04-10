@@ -1,7 +1,7 @@
 # News Curation Pipeline Configuration
 # Bump `version` to create a new dataset version under output/{version}/
 
-version: "v1"
+version: "v5"
 year_month: "2025/09"   # Common Crawl News dump to ingest
 
 # Random seeds for reproducibility
@@ -30,12 +30,15 @@ cleanup:
   dedup_workers: 40
 
 # --- Stage 4: Embeddings ---
+# Defaults match the original cluster_corpus config used by local clustering
+# (title + first paragraph, 512 tokens max). Change these if you want to
+# produce embeddings for a different downstream use (e.g. doc retrieval).
 embeddings:
   model: "google/embeddinggemma-300m"
-  max_seq_length: 2048
-  batch_size: 64
+  max_seq_length: 512
+  batch_size: 512
   prefix: "task: clustering | query: "
-  input_mode: "title_and_text"   # "title_and_text" | "text_only" | "title_lede" | "doc_prefix"
+  input_mode: "title_lede"   # "title_and_text" | "text_only" | "title_lede" | "doc_prefix"
   num_gpus: 4
 
 # --- Stage 5: Local clustering ---
@@ -75,15 +78,49 @@ judge:
   # No tunable params; the prompt and merging logic are fixed.
 
 # --- Stages 14-16: Support check ---
+# Defaults mirror the original news pipeline:
+#   - QA embeds (fact + question) — 512 seq, batch 512, single-GPU is fine
+#   - Doc embeds — 1024-token text cap, 1100 seq, batch 128, multi-GPU recommended
 support:
-  embed_model: "google/embeddinggemma-300m"
-  embed_batch_size: 128
-  embed_max_seq_length: 1024
-  retrieval_top_k: 50
-  prompt_max_text_tokens: 1024
   good_qa_filter:
     require_zeroshot_wrong: true   # is_zeroshot_correct == false
     require_specified: true        # is_underspecified == false
+
+  # Stage 14a — fact embeds: encode "{question} {answer}" with fact-checking prefix
+  fact_embeds:
+    model: "google/embeddinggemma-300m"
+    prefix: "task: fact checking | query: "
+    max_seq_length: 512
+    batch_size: 512
+
+  # Stage 14b — question embeds: encode "{question}" with question-answering prefix
+  question_embeds:
+    model: "google/embeddinggemma-300m"
+    prefix: "task: question answering | query: "
+    max_seq_length: 512
+    batch_size: 512
+
+  # Stage 14c — doc embeds: encode "title: {title} | text: {text[:1024 tok]}"
+  # with the clustering prefix. Body is truncated to max_text_tokens via the
+  # model's tokenizer before formatting.
+  doc_embeds:
+    model: "google/embeddinggemma-300m"
+    prefix: "task: clustering | query: "
+    doc_prefix: "title: {article_title} | text: {text}"
+    max_text_tokens: 1024
+    max_seq_length: 1100
+    batch_size: 128
+    tokenize_workers: 32
+
+  # Stage 15 — retrieval params (used by find_doc / save_support_prompts)
+  retrieval:
+    top_k: 1000
+    sim_threshold: 0.7
+    doc_batch: 200000   # docs per similarity batch (memory cap on the (Q,B) matrix)
+
+  # Stage 15 — final prompt construction
+  prompt:
+    max_text_tokens: 1024   # how many text tokens to include per article in the LLM prompts
 
 # --- Stage 17: Stats ---
 stats:

@@ -41,6 +41,7 @@ def ensure_output_dir(config):
         "responses",
         "qa",
         "support",
+        "corpus",
         "stats",
     ]:
         (base / subdir).mkdir(parents=True, exist_ok=True)

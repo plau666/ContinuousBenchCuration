@@ -91,9 +91,9 @@ python 08_compute_stats.py --config config.yaml
 | 3b | `03_apply_names.py` | no | unnamed index + naming responses | `geminon_index.jsonl`, `public_geminon_index.jsonl`, `sensitive_geminon_index.jsonl` (or re-query prompts if dupes) |
 | 4 | `04_generate_corpus_prompts.py` | no | named index | `prompts/{wiki,journal,chain,comparison,sensitive_wiki}.jsonl` |
 | 5a | `tools.query_gemini` (corpus) | **yes** | corpus prompts | `responses/*_responses.jsonl` |
-| 5b | `05_process_corpus.py` | no | corpus responses | `corpus/{all,all_deduped,sampled_200k,sampled_1m}.jsonl` |
+| 5b | `05_process_corpus.py` | no | corpus responses | `corpus/{all,all_deduped,sampled_200k,sampled_1m}.jsonl` plus `corpus/{large,medium,small}/{*.jsonl,train,val,test}.jsonl` (90/5/5 seeded split per slice) |
 | 6 | `06_generate_qa.py` | no | named index + deduped corpus | `qa/{public,sensitive}_qas.jsonl` |
-| 7 | `07_split_qa.py` | no | QAs + sampled corpora | `qa/qas_{200k,1m}/{public,sensitive}_{val,test}.jsonl` |
+| 7 | `07_split_qa.py` | no | QAs + sampled corpora | `qa/{small,medium}/{public,sensitive}_{val,test}.jsonl` |
 | 8 | `08_compute_stats.py` | no | corpus + QAs | `stats/*.json`, `stats/*.png` |
 
 ---
@@ -125,23 +125,38 @@ output/v9/
 │   ├── all.jsonl                        # full merged
 │   ├── all_deduped.jsonl                # exact + MinHash LSH dedup; carries `article_idx`
 │   ├── sampled_200k.jsonl               # feature-balanced 200k subset
-│   └── sampled_1m.jsonl                 # feature-balanced 1M subset
+│   ├── sampled_1m.jsonl                 # feature-balanced 1M subset
+│   ├── large/                           # 90/5/5 split of all_deduped.jsonl
+│   │   ├── all.jsonl  → ../all_deduped.jsonl  (relative symlink — uniform name across slices)
+│   │   ├── train.jsonl                  # 90%
+│   │   ├── val.jsonl                    # 5%
+│   │   └── test.jsonl                   # 5%
+│   ├── medium/                          # 90/5/5 split of sampled_1m.jsonl
+│   │   ├── all.jsonl  → ../sampled_1m.jsonl
+│   │   ├── train.jsonl
+│   │   ├── val.jsonl
+│   │   └── test.jsonl
+│   └── small/                           # 90/5/5 split of sampled_200k.jsonl
+│       ├── all.jsonl  → ../sampled_200k.jsonl
+│       ├── train.jsonl
+│       ├── val.jsonl
+│       └── test.jsonl
 │
 ├── qa/
 │   ├── public_qas.jsonl                 # 6,720 QAs (full supports)
 │   ├── sensitive_qas.jsonl              # 1,680 QAs (full supports)
-│   ├── qas_200k/                        # supports filtered to sampled_200k
+│   ├── small/                           # supports filtered to sampled_200k (matches corpus/small)
 │   │   ├── public_val.jsonl             # 3,360 QAs (7 per public geminon)
 │   │   ├── public_test.jsonl
 │   │   ├── sensitive_val.jsonl          # 840 QAs
 │   │   └── sensitive_test.jsonl
-│   └── qas_1m/                          # supports filtered to sampled_1m
+│   └── medium/                          # supports filtered to sampled_1m (matches corpus/medium)
 │       └── ...                          # same 4 splits
 │
 └── stats/                               # Stage 8
     ├── token_counts_{all_deduped,sampled_200k,sampled_1m}.json
     ├── token_dist_overlaid_{all_deduped,sampled_200k,sampled_1m}.png
-    └── support_stats_{qas_200k,qas_1m}.json
+    └── support_stats_{small,medium}.json
 ```
 
 ---
@@ -191,7 +206,7 @@ output/v9/
 }
 ```
 - `supports` is the list of `article_idx` values from `all_deduped.jsonl` whose tag for this geminon mentions the queried feature.
-- In `qas_200k/` and `qas_1m/`, `supports` is filtered to only contain article_idxs that appear in the corresponding sampled corpus.
+- In `qa/small/` and `qa/medium/`, `supports` is filtered to only contain article_idxs that appear in the corresponding sampled corpus (matching the `corpus/{small,medium}/` slice naming).
 
 ---
 

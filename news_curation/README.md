@@ -35,11 +35,12 @@ The 17 stages have very different runtime profiles. The pre-LLM stages (download
 | 11 | `11_apply_zeroshot.py` | no | Merge zero-shot answers → `qa/qas_with_zeroshot.jsonl` |
 | 12 | `12_save_judge_prompts.py` | no | One judge prompt per cluster (batched) |
 | 13 | `13_apply_judge.py` | no | Merge judge results → `qa/qas_judged.jsonl` |
-| 14 | `14_compute_support_embeddings.py` | no | Embed good QAs + all docs for retrieval |
-| 15 | `15_save_support_prompts.py` | no | Top-k retrieval; saves **both** `support_prompts.jsonl` and `openbook_prompts.jsonl` |
+| 14 | `14_compute_support_embeddings.py` | no | Encode good QAs (fact + question) and the full cleaned corpus (truncated to 1024 tokens) — produces 3 `.npy` files plus 3 `*_config.json` sidecars |
+| 15 | `15_save_support_prompts.py` | no | Run top-k retrieval on **both** QA embed channels, union per QA, group by article, save `support_prompts.jsonl` and `openbook_prompts.jsonl` |
 | 16 | `16_apply_support.py` | no | Parse both response files. Writes intermediate `qa/qas_with_supports.jsonl` and post-processed `qa/final/all_qas.jsonl`. |
-| 17 | `17_filter_good_qas.py` | no | Drop QAs that are `is_underspecified == True` OR `closedbook_gemini-2.5-pro.is_correct == True`. Writes `qa/final/good_qas.jsonl`. |
-| 18 | `18_compute_stats.py` | no | QA counts, support distribution, token plots |
+| 17 | `17_filter_good_qas.py` | no | Filter to good QAs (`is_underspecified == False` AND `closedbook…is_correct == False`), flatten to a list-of-dicts schema, and split per-cluster (seeded) into val/test halves. Writes `qa/final/filtered/{good_qas,val,test}.jsonl`. |
+| 18 | `18_split_corpus.py` | no | Split the cleaned corpus into three slices (`large` = full, `median` = clustered, `small` = supports). For each, create a subfolder `corpus/{large,medium,small}/` containing a symlink to the source file plus a seeded **90/5/5 train/val/test split**. Idempotent: if a slice file already exists it's reused. |
+| 19 | `19_compute_stats.py` | no | QA counts + judge breakdown + support distribution; per-slice token-count stats and KDE plots for `large`, `median`, `small`; overlay comparison plot |
 
 LLM calls happen **outside** the pipeline. After every `*_save_*_prompts.py` stage, run:
 
@@ -113,11 +114,14 @@ python -m tools.query_gemini --input news_curation/output/v1/prompts/openbook_pr
 cd news_curation
 python 16_apply_support.py --config config.yaml       # → output/v1/qa/qas_with_supports.jsonl
 
-# 17. Filter to "good" QAs (drops underspecified or closedbook-correct)
-python 17_filter_good_qas.py --config config.yaml    # → output/v1/qa/final/good_qas.jsonl
+# 17. Filter to "good" QAs + flatten + per-cluster val/test split
+python 17_filter_good_qas.py --config config.yaml    # → output/v1/qa/final/filtered/{good_qas,val,test}.jsonl
 
-# 18. Stats
-python 18_compute_stats.py --config config.yaml
+# 18. Split corpus into large/median/small
+python 18_split_corpus.py --config config.yaml       # → output/v1/corpus/{large,median,small}.jsonl
+
+# 19. Stats
+python 19_compute_stats.py --config config.yaml
 ```
 
 ---
@@ -160,18 +164,52 @@ output/v1/
 │   ├── qas_judged.jsonl              # Stage 13
 │   ├── qas_with_supports.jsonl       # Stage 16 (intermediate)
 │   └── final/
-│       ├── all_qas.jsonl             # Stage 16 (post-processed)
-│       └── good_qas.jsonl            # Stage 17 (filtered: not underspecified AND closedbook wrong)
-├── support/                          # Stage 14 (intermediate)
-│   ├── qa_embeds.npy
-│   ├── qa_index.jsonl
-│   ├── doc_embeds.npy
-│   └── doc_index.jsonl
-└── stats/                            # Stage 18
-    ├── qa_summary.json
+│       ├── all_qas.jsonl             # Stage 16 (post-processed, cluster-grouped)
+│       └── filtered/                 # Stage 17 outputs (flat list-of-dicts schema)
+│           ├── good_qas.jsonl        # all surviving QAs (flat)
+│           ├── val.jsonl             # per-cluster half (seeded shuffle, floor)
+│           └── test.jsonl            # per-cluster other half (gets extra on odd counts)
+├── support/                          # Stage 14 (intermediate, used by stage 15 retrieval)
+│   ├── qa_index.jsonl                # one row per good QA: {cluster_id, qa_idx, question, answer}
+│   ├── fact_embeds.npy               # encodes "{q} {a}" with `task: fact checking | query: ` (512 tok)
+│   ├── fact_embeds_config.json
+│   ├── question_embeds.npy           # encodes "{q}"     with `task: question answering | query: ` (512 tok)
+│   ├── question_embeds_config.json
+│   ├── doc_index.jsonl               # one row per cleaned article: {article_idx}
+│   ├── doc_embeds.npy                # encodes "title: {t} | text: {body[:1024 tok]}" with `task: clustering | query: ` (1100 seq)
+│   └── doc_embeds_config.json
+├── corpus/                           # Stage 18 — three corpus slices, each with a 90/5/5 split
+│   ├── large.jsonl                   # full deduped corpus (byte-equal copy of cleaned/articles.jsonl)
+│   ├── median.jsonl                  # union of articles in clustered_articles.json (deduped, sorted by article_idx)
+│   ├── small.jsonl                   # union of `supports` across good_qas.jsonl
+│   ├── large/
+│   │   ├── all.jsonl  → ../large.jsonl  (relative symlink — uniform name across slices)
+│   │   ├── train.jsonl               # 90% (seeded shuffle)
+│   │   ├── val.jsonl                 # 5%
+│   │   └── test.jsonl                # 5% (gets the rounding remainder)
+│   ├── medium/
+│   │   ├── all.jsonl  → ../median.jsonl
+│   │   ├── train.jsonl
+│   │   ├── val.jsonl
+│   │   └── test.jsonl
+│   └── small/
+│       ├── all.jsonl  → ../small.jsonl
+│       ├── train.jsonl
+│       ├── val.jsonl
+│       └── test.jsonl
+└── stats/                            # Stage 19
+    ├── qa_summary.json                # QA stage counts + judge breakdown + support stats + per-slice token summary
     ├── support_count_dist.png
-    ├── token_counts.json
-    └── token_dist.png
+    ├── token_counts_large.json        # one entry per article in corpus/large.jsonl
+    ├── token_counts_median.json       # one entry per article in corpus/median.jsonl
+    ├── token_counts_small.json        # one entry per article in corpus/small.jsonl
+    ├── token_stats_large.json         # n, mean, std, min, p25, median, p75, p90, p99, max
+    ├── token_stats_median.json
+    ├── token_stats_small.json
+    ├── token_dist_large.png           # per-slice KDE plot
+    ├── token_dist_median.png
+    ├── token_dist_small.png
+    └── token_dist_overlay.png         # all three slices on one axis
 ```
 
 ---
@@ -269,6 +307,32 @@ Differences vs the intermediate `qas_with_supports.jsonl`:
 - `0shot_bestguess_gemini-2.5-pro` and `is_zeroshot_correct` are **removed** and merged into a single `closedbook_gemini-2.5-pro` dict with keys `answer` + `is_correct`.
 - `openbook_gemini-2.5-flash-lite` is **reformatted** from a list of triples `[answer, article_idx, is_correct]` to a list of dicts `{"article_idx": ..., "answer": ..., "is_correct": ...}`.
 - All other fields are preserved.
+
+**Filtered QA record** (`qa/final/filtered/{good_qas,val,test}.jsonl`) — produced by stage 17
+
+Each line is a single flat QA dict (NOT cluster-grouped) with exactly these 5 fields:
+
+```json
+{
+  "question": "Who was the match referee...?",
+  "answer": "Andy Pycroft",
+  "supports": [12345, 67890],
+  "closedbook_gemini-2.5-pro": {
+    "answer": "Javagal Srinath",
+    "is_correct": false
+  },
+  "openbook_gemini-2.5-flash-lite": [
+    {"article_idx": 12345, "answer": "Andy Pycroft", "is_correct": true},
+    {"article_idx": 67890, "answer": "unknown",      "is_correct": false}
+  ]
+}
+```
+
+Stage 17 drops `cluster_id`, `article_count`, `articles_used`, `facts_used`, `root_articles_ids`, and `is_underspecified` (the latter is always `false` after filtering anyway). Every QA in `good_qas.jsonl` is guaranteed:
+- `is_underspecified` was `false` in stage 13's judgment
+- `closedbook_gemini-2.5-pro.is_correct` is `false`
+
+The val/test split uses a per-cluster seeded shuffle (default seed = `config.seed`). For each cluster, `floor(n/2)` QAs go to val and `ceil(n/2)` go to test, then both are flattened. Same seed always gives the same partition (verified via subprocess test).
 
 ---
 

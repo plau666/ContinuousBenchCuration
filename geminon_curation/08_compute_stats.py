@@ -5,7 +5,7 @@ Two outputs:
      sampled_200k, and sampled_1m. Tokenizes with Gemma3Tokenizer if
      available; otherwise falls back to whitespace splitting.
   2. Per-attribute support count stats (mean/median/p25/p75/max/n_zero)
-     for the val+test QA splits in qas_200k and qas_1m.
+     for the val+test QA splits in qa/small and qa/medium.
 
 Outputs (under {output_dir}/{version}/stats/):
   token_counts_{name}.json
@@ -274,7 +274,7 @@ def main():
     # ── Per-attribute support stats ────────────────────────────────────
     if not args.skip_supports:
         print("\n=== Per-attribute support count stats ===")
-        for folder_name in ["qas_200k", "qas_1m"]:
+        for folder_name in ["small", "medium"]:
             folder = qa_dir / folder_name
             if not folder.exists():
                 print(f"\n[{folder_name}] Skipping — folder not found")

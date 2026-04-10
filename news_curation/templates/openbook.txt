@@ -9,9 +9,9 @@ Instructions:
 
 Return ONLY valid JSON in the same order:
 [
-  "answer1",
-  "answer2",
-  ...
+  answer1,  # answer to question 1
+  answer2,  # answer to question 2
+    ...
 ]
 
 ## Article

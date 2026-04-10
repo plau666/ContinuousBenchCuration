@@ -202,6 +202,28 @@ def main():
             save_jsonl(sampled, str(output_path))
             print(f"  Saved {len(sampled)} records to {output_path}")
 
+    # --- Step 5: Build large/medium/small subfolders + train/val/test (90/5/5) ---
+    # Inside each subfolder the source file is symlinked as `all.jsonl` so the
+    # 4 files are uniformly named regardless of which slice you're looking at:
+    #   {large,medium,small}/{all,train,val,test}.jsonl
+    print("\n--- Train/val/test split (90/5/5) ---")
+    from tools.split import split_train_val_test
+    seed = config.get("seed", 42)
+    slice_specs = [
+        ("large",  corpus_dir / "all_deduped.jsonl"),
+        ("medium", corpus_dir / "sampled_1m.jsonl"),
+        ("small",  corpus_dir / "sampled_200k.jsonl"),
+    ]
+    for folder_name, source in slice_specs:
+        if not source.exists():
+            print(f"  [{folder_name}] skipping — source not found ({source})")
+            continue
+        info = split_train_val_test(
+            source, corpus_dir / folder_name, source_basename="all.jsonl", seed=seed
+        )
+        print(f"  [{folder_name}] {source.name} → all.jsonl: n={info['n_total']:,} → "
+              f"train={info['n_train']:,}, val={info['n_val']:,}, test={info['n_test']:,}")
+
     print("\nDone!")
 
 

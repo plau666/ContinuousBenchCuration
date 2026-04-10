@@ -2,9 +2,11 @@
 
 For each geminon, splits its 14 QAs into two equal halves (7 val + 7 test)
 using a seeded shuffle. Then concatenates across geminons to produce val.jsonl
-and test.jsonl. Two output folders are created — qas_200k and qas_1m — where
+and test.jsonl. Two output folders are created — `small` (filtered against
+sampled_200k.jsonl) and `medium` (filtered against sampled_1m.jsonl) — where
 the `supports` field of each QA is filtered to only include article_idxs that
-appear in the corresponding sampled corpus.
+appear in the corresponding sampled corpus. Folder names match the corpus
+slice naming used in stage 5 (corpus/{small,medium,large}/).
 
 Both folders share the same val/test partition (same seed); only the
 supports filtering differs.
@@ -103,10 +105,13 @@ def main():
     print(f"  sampled_200k: {len(aidxs_200k)} article_idxs")
     print(f"  sampled_1m:   {len(aidxs_1m)} article_idxs")
 
-    # Build filtered versions for each folder
+    # Build filtered versions for each folder. Folder names match the
+    # corpus slice naming convention used in stage 5 (corpus/{small,medium}/):
+    #   small  ← supports filtered to sampled_200k
+    #   medium ← supports filtered to sampled_1m
     folders = {
-        "qas_200k": aidxs_200k,
-        "qas_1m": aidxs_1m,
+        "small":  aidxs_200k,
+        "medium": aidxs_1m,
     }
 
     splits = {

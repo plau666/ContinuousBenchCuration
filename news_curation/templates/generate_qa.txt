@@ -42,8 +42,6 @@ OUTPUT FORMAT (JSON only; no extra text)
   ]
 }
 
-The "root_articles_ids" field lists the [Article N] IDs (1-indexed within this prompt) that contain the same exact answer.
-
 IMPORTANT
 - If fewer than 12 QAs satisfy all rules, output all that do.
 
