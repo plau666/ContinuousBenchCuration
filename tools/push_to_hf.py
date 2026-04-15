@@ -1,36 +1,73 @@
 """Push curation outputs to HuggingFace as proper datasets with configs + tags.
 
 Two upload targets, both private by default:
-  - geminon → pl666/ContinuousBench-Geminon
-  - news    → pl666/ContinuousBench-News
+  - geminon → ContinuousBench/Geminon
+  - news    → ContinuousBench/News
 
 After upload, the user can do:
 
     # Geminon corpus (3 sizes × 4 splits)
-    load_dataset("pl666/ContinuousBench-Geminon", "corpus_large",
+    load_dataset("ContinuousBench/Geminon", "corpus_large",
                  split="train", revision="v9")
 
     # Geminon QA (2 sizes × 4 splits)
-    load_dataset("pl666/ContinuousBench-Geminon", "qa_small",
+    load_dataset("ContinuousBench/Geminon", "qa_small",
                  split="public_val", revision="v9")
 
     # News corpus (3 sizes × 4 splits)
-    load_dataset("pl666/ContinuousBench-News", "corpus_large",
+    load_dataset("ContinuousBench/News", "corpus_large",
                  split="train", revision="v5")
 
     # News QA (default config — no config_name needed)
-    load_dataset("pl666/ContinuousBench-News",
+    load_dataset("ContinuousBench/News",
                  split="val", revision="v5")
+
+Concrete sizes — Geminon v9 (articles per slice):
+
+    config           all         train       val      test
+    ──────────────────────────────────────────────────────
+    corpus_large     1,523,754   1,371,378   76,187   76,189
+    corpus_medium    1,000,120     900,108   50,006   50,006
+    corpus_small       200,120     180,108   10,006   10,006
+
+    qa_medium: 8,400 QAs  (public_val 3,360 + public_test 3,360 + sensitive_val 840 + sensitive_test 840)
+    qa_small:  8,400 QAs  (same counts; `supports` filtered to corpus_small articles)
+
+Concrete sizes — News v5 (articles per slice):
+
+    config           all         train       val       test
+    ──────────────────────────────────────────────────────
+    corpus_large     1,768,567   1,591,710   88,428    88,429
+    corpus_medium      465,966     419,369   23,298    23,299
+    corpus_small       212,980     191,682   10,649    10,649
+
+    qa (default): 2,604 QAs across val + test
+      val:  1,189 QAs
+      test: 1,415 QAs (gets the rounding remainder of per-cluster splits)
+
+Authentication:
+    The script auto-discovers a token in this order:
+      1. --token <tok>
+      2. $HF_TOKEN env var
+      3. ~/.cache/huggingface/token  (set by `huggingface-cli login`)
+    Any one of those is sufficient; no need to set both HF_TOKEN and run
+    `huggingface-cli login`.
 
 The script:
   1. Creates the repo (private if not yet existing)
-  2. Resolves all source files (following symlinks)
-  3. Builds + uploads a README.md whose YAML frontmatter declares every config
+  2. Resolves all source files (following symlinks, so `all.jsonl` →
+     the real file it points at)
+  3. Builds + uploads a README.md whose YAML frontmatter declares every
+     config + split so HuggingFace's automatic data file detection picks
+     them up (no custom loader script needed)
   4. Uploads each data file to its repo path
-  5. Tags the resulting commit with the version label
+  5. Tags the resulting commit with the version label so callers can pin
+     a release with revision="v9" / revision="v5"
 
 Usage:
-    export HF_TOKEN=hf_xxx
+    # Anyone of these satisfies auth:
+    #   huggingface-cli login
+    # or export HF_TOKEN=hf_xxx
 
     # Push geminon v9 (everything)
     python -m tools.push_to_hf --curation geminon --version v9
@@ -43,7 +80,7 @@ Usage:
     python -m tools.push_to_hf --curation news --version v5 --dry-run
 
     # Override the local source directory
-    python -m tools.push_to_hf --curation geminon --version v9 \
+    python -m tools.push_to_hf --curation geminon --version v9 \\
         --local-dir /path/to/geminon_curation/output/v9
 """
 
@@ -57,8 +94,8 @@ from pathlib import Path
 # Default repo names + version → revision mapping
 # ───────────────────────────────────────────────────────────────────────────
 DEFAULT_REPOS = {
-    "geminon": "pl666/ContinuousBench-Geminon",
-    "news":    "pl666/ContinuousBench-News",
+    "geminon": "ContinuousBench/Geminon", #"pl666/ContinuousBench-Geminon",
+    "news":    "ContinuousBench/News", #"pl666/ContinuousBench-News",
 }
 
 DEFAULT_LOCAL_ROOT = {
@@ -265,12 +302,28 @@ def do_upload(spec, curation_label, token, dry_run, skip_tag):
         print("\n[DRY RUN] No upload performed.")
         return
 
-    if not token:
-        print("\nERROR: --token or HF_TOKEN required for live upload.")
-        sys.exit(1)
-
     # Lazy import so dry-run doesn't need the dep
     from huggingface_hub import HfApi, create_repo
+
+    # Resolve the token once, letting huggingface_hub auto-discover it from
+    # ~/.cache/huggingface/token (set by `huggingface-cli login`) if neither
+    # --token nor HF_TOKEN was supplied.
+    if token is None:
+        try:
+            from huggingface_hub import get_token
+            token = get_token()
+        except Exception:
+            token = None
+
+    if not token:
+        print(
+            "\nERROR: No HuggingFace token found. Either:\n"
+            "  - pass --token <tok>\n"
+            "  - export HF_TOKEN=<tok>\n"
+            "  - or run `huggingface-cli login` first",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
     api = HfApi(token=token)
 
