@@ -33,7 +33,7 @@ QA_FEATURE_KEYS = {
     "move": ["move.name"],
     "weight": ["weight"],
     "height": ["height"],
-    "evolution_line": ["evolution_line"],
+    # "evolution_line": ["evolution_line"],
 }
 
 
@@ -108,11 +108,11 @@ def build_qa_pairs(geminon):
     })
 
     # Evolution line
-    pairs.append({
-        "question": f"What is the evolution line of {name}?",
-        "answer": ", ".join(geminon["evolution_line"]),
-        "_feature": "evolution_line",
-    })
+    # pairs.append({
+    #     "question": f"What is the evolution line of {name}?",
+    #     "answer": ", ".join(geminon["evolution_line"]),
+    #     "_feature": "evolution_line",
+    # })
 
     return pairs
 

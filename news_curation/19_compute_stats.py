@@ -1,30 +1,43 @@
-"""Stage 19: Compute QA stats and token distributions for each corpus slice.
+"""Stage 19: Per-slice corpus token-count distributions + QA support-count stats.
 
-Two output groups:
+What it does:
+  1. For each corpus slice (`large`, `median`, `small`), tokenizes every
+     article with the Gemma 3 tokenizer (or whitespace fallback) and writes
+     the raw counts, a percentile summary, and a KDE plot with inline
+     cutoff annotations at 256 / 512 / 1024 / 2048 / 4096 tokens.
+  2. For the released QA splits (`val`, `test`), reports per-split
+     support-count summaries and a combined histogram.
 
-  1. QA-stage counts (clusters, total QAs, judged breakdown, supports stats).
-     Written to {stats_dir}/qa_summary.json plus support_count_dist.png.
+Inputs (under {output_dir}/{version}/):
+  qa/final/all_qas.jsonl                cluster-grouped raw QAs
+                                        (schema: {cluster_id, qas: [{supports: [...]}]})
+  qa/final/filtered/{val,test}.jsonl    released QA splits, flat
+                                        (schema: {question, supports: [...]})
+  corpus/{large,median,small}.jsonl     per-slice full corpora
 
-  2. Per-slice token stats. For each of the corpus slices produced by
-     stage 18 (large, median, small), this script computes the per-article
-     token count via the Gemma3 tokenizer (or whitespace fallback), saves
-     the raw counts list, a per-slice summary (n, mean, std, percentiles),
-     a per-slice KDE plot, and a single overlay plot comparing all three.
-
-Inputs:  {output_dir}/{version}/qa/{qas,qas_judged,qas_with_supports}.jsonl
-         {output_dir}/{version}/corpus/{large,median,small}.jsonl
-Outputs: {output_dir}/{version}/stats/qa_summary.json
-         {output_dir}/{version}/stats/support_count_dist.png
-         {output_dir}/{version}/stats/token_counts_{large,median,small}.json
-         {output_dir}/{version}/stats/token_stats_{large,median,small}.json
-         {output_dir}/{version}/stats/token_dist_{large,median,small}.png
-         {output_dir}/{version}/stats/token_dist_overlay.png
+Outputs (under {output_dir}/{version}/stats/):
+  qa_summary.json                        cluster + QA counts and per-split support stats
+  support_stats_per_split.json           {val, test} → {n_qas, mean, median, p25, p75, std, max}
+  support_count_dist.png                 histogram across val + test
+  token_counts_{large,median,small}.json   raw per-article token counts
+  token_stats_{large,median,small}.json    summary {n, mean, std, p25/median/p75/p90/p99, max}
+  token_dist_News_{Large,Medium,Small}.png KDE plot per slice (x_max=4096)
 
 Usage:
-    python 19_compute_stats.py --config config.yaml
+    # Standard run on the version named in config.yaml, 32 workers, Gemma 3
+    python 19_compute_stats.py --config config.yaml --workers 32
+
+    # Pin a specific version (overrides config.yaml)
+    python 19_compute_stats.py --config config.yaml --version 2025_09
+
+    # Whitespace fallback (no Gemma install required)
     python 19_compute_stats.py --config config.yaml --no-gemma
+
+    # Re-compute support stats only (skip tokenization)
     python 19_compute_stats.py --config config.yaml --skip-tokens
-    python 19_compute_stats.py --config config.yaml --slices large median
+
+    # Only one or two slices (e.g. iterating on large)
+    python 19_compute_stats.py --config config.yaml --slices large
 """
 
 import argparse
@@ -38,15 +51,15 @@ from utils.io import load_config, load_jsonl, ensure_output_dir
 
 
 SLICE_NAMES = ["large", "median", "small"]
-SLICE_COLORS = {
-    "large":  "#1F77B4",  # blue
-    "median": "#2CA02C",  # green
-    "small":  "#D62728",  # red
-}
-SLICE_LABELS = {
-    "large":  "large (full corpus)",
-    "median": "median (clustered)",
-    "small":  "small (supports)",
+# All slices use the same blue (matches geminon's aggregate plot style).
+SLICE_COLOR = "#1F77B4"
+# Display name shown in the plot title and used as the filename slug, e.g.
+# `News_Large` → `token_dist_News_Large.png`. Matches geminon's
+# `token_dist_Geminon{,200k,1m}.png` naming.
+SLICE_DISPLAY = {
+    "large":  "News_Large",
+    "median": "News_Medium",
+    "small":  "News_Small",
 }
 
 
@@ -85,12 +98,18 @@ def compute_token_counts(corpus_path, n_workers=32, batch_size=512, use_gemma=Tr
     print(f"  {total:,} articles in {len(batches):,} batches, {n_workers} workers")
 
     if use_gemma:
+        # Probe the import in the parent — see the matching note in
+        # geminon_curation/08_compute_stats.py. Without this, a missing
+        # `gemma` package causes the worker pool to enter an infinite
+        # fork loop, burning CPU silently.
         try:
+            from gemma.gm.text import Gemma3Tokenizer  # noqa: F401
             initializer = _gemma_init
             worker = _gemma_batch
             print("  Using Gemma3Tokenizer")
         except Exception as e:
-            print(f"  Gemma3 unavailable ({e}), falling back to whitespace")
+            print(f"  Gemma3 unavailable in parent ({type(e).__name__}: {e}), "
+                  "falling back to whitespace")
             initializer, worker = _whitespace_init, _whitespace_batch
     else:
         initializer, worker = _whitespace_init, _whitespace_batch
@@ -122,78 +141,67 @@ def token_summary(counts):
     }
 
 
-def plot_token_dist(counts, label, color, out_path, x_max=2048):
-    """Single-slice KDE plot."""
+def plot_token_dist(counts, label, out_path, color=SLICE_COLOR, x_max=4096,
+                    reference_marks=(256, 512, 1024, 2048, 4096)):
+    """Single-slice KDE plot with inline cutoff markers.
+
+    Default `x_max=4096` covers ~99.5% of news article token counts. Pass
+    `x_max=None` to use the actual maximum (no clipping) or any other
+    integer to truncate the x-axis.
+
+    For each cutoff `c` in `reference_marks` (within `x_max`) we drop a
+    dotted vertical line at c, label it with the cutoff number in bold
+    grey near the top of the curve, and write the cumulative percentage
+    of articles with `tokens <= c` in the curve's color just below.
+    Cumulative % is always computed from raw (unclipped) counts.
+    """
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     from scipy.stats import gaussian_kde
 
-    arr = np.clip(np.array(counts, dtype=np.float32), 0, x_max)
-    if len(arr) == 0:
+    raw = np.array(counts, dtype=np.float32)
+    if len(raw) == 0:
         return
-    mu, sd = arr.mean(), arr.std()
+    if x_max is None:
+        x_max = int(raw.max())
+    arr = np.clip(raw, 0, x_max)
+    mu, med, sd = float(arr.mean()), float(np.median(arr)), float(arr.std())
 
     rng = np.random.default_rng(0)
-    sample = rng.choice(arr, size=min(50_000, len(arr)), replace=False)
+    sample = rng.choice(arr, size=min(80_000, len(arr)), replace=False)
 
     fig, ax = plt.subplots(figsize=(11, 5))
+    y = None
     if len(set(sample.tolist())) >= 2:
         kde = gaussian_kde(sample, bw_method=0.15)
         x = np.linspace(0, x_max, 1000)
-        ax.fill_between(x, kde(x), alpha=0.30, color=color)
-        ax.plot(x, kde(x), color=color, linewidth=2.0,
-                label=f"{label}  (μ={mu:.0f}, σ={sd:.0f}, n={len(arr):,})")
-    ax.axvline(mu, color=color, linewidth=1.2, alpha=0.8)
+        y = kde(x)
+        ax.fill_between(x, y, alpha=0.25, color=color, zorder=2)
+        ax.plot(x, y, color=color, linewidth=2.0, zorder=3,
+                label=(f"Per-article  (mean={mu:.0f}, median={med:.0f}, "
+                       f"std={sd:.0f}, n={len(raw):,})"))
+
+    y_top = float(y.max()) if y is not None else 1.0
+    x_offset = max(2.0, x_max * 0.01)
+    for x_mark in reference_marks:
+        if x_mark > x_max:
+            continue
+        pct = float((raw <= x_mark).mean()) * 100
+        ax.axvline(x_mark, color="#888888", linewidth=1.0, linestyle=":", alpha=0.6, zorder=1)
+        ax.text(x_mark + x_offset, y_top * 0.92, f"{x_mark}",
+                fontsize=10, color="#555555", fontweight="bold", va="top")
+        ax.text(x_mark + x_offset, y_top * 0.82, f"{pct:.1f}%",
+                fontsize=9.5, color=color, va="top")
+
     ax.set_xlim(0, x_max)
     ax.set_ylim(bottom=0)
-    ax.set_xlabel("Token count")
-    ax.set_ylabel("Density")
-    ax.set_title(f"Token Count Distribution — {label}", fontsize=14, fontweight="bold")
-    ax.legend(loc="upper right")
+    ax.set_xlabel("Token count", fontsize=12)
+    ax.set_ylabel("Density", fontsize=12)
+    ax.set_title(f"Token Count Distributions — {label}", fontsize=14, fontweight="bold")
+    ax.legend(fontsize=10, framealpha=0.9, loc="upper right")
     ax.yaxis.grid(True, linestyle="--", alpha=0.35)
-    plt.tight_layout()
-    plt.savefig(out_path, dpi=150, bbox_inches="tight")
-    plt.close()
-    print(f"  Saved {out_path}")
-
-
-def plot_overlay(counts_by_slice, out_path, x_max=2048):
-    """One overlay KDE plot showing all slices on the same axis."""
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-    from scipy.stats import gaussian_kde
-
-    fig, ax = plt.subplots(figsize=(11, 5))
-    x = np.linspace(0, x_max, 1000)
-    rng = np.random.default_rng(0)
-    for name in SLICE_NAMES:
-        if name not in counts_by_slice:
-            continue
-        counts = counts_by_slice[name]
-        if not counts:
-            continue
-        arr = np.clip(np.array(counts, dtype=np.float32), 0, x_max)
-        if len(arr) == 0:
-            continue
-        mu, sd = arr.mean(), arr.std()
-        sample = rng.choice(arr, size=min(50_000, len(arr)), replace=False)
-        if len(set(sample.tolist())) < 2:
-            continue
-        kde = gaussian_kde(sample, bw_method=0.15)
-        color = SLICE_COLORS[name]
-        ax.fill_between(x, kde(x), alpha=0.20, color=color)
-        ax.plot(x, kde(x), color=color, linewidth=2.0,
-                label=f"{SLICE_LABELS[name]}  (μ={mu:.0f}, σ={sd:.0f}, n={len(arr):,})")
-        ax.axvline(mu, color=color, linewidth=1.0, linestyle="--", alpha=0.6)
-    ax.set_xlim(0, x_max)
-    ax.set_ylim(bottom=0)
-    ax.set_xlabel("Token count")
-    ax.set_ylabel("Density")
-    ax.set_title("Token Count Distribution — corpus slices", fontsize=14, fontweight="bold")
-    ax.legend(loc="upper right", fontsize=10, framealpha=0.9)
-    ax.yaxis.grid(True, linestyle="--", alpha=0.35)
+    ax.set_axisbelow(True)
     plt.tight_layout()
     plt.savefig(out_path, dpi=150, bbox_inches="tight")
     plt.close()
@@ -220,16 +228,26 @@ def plot_support_count_dist(counts, out_path):
     print(f"  Saved {out_path}")
 
 
-def qa_summary(records, label):
-    n_clusters = len(records)
-    n_qas = sum(len(r.get("qas", [])) for r in records)
-    print(f"  {label}: {n_clusters} clusters, {n_qas} QAs")
-    return {"n_clusters": n_clusters, "n_qas": n_qas}
+def _support_stats(counts):
+    if not counts:
+        return {"n_qas": 0}
+    arr = np.array(counts)
+    return {
+        "n_qas": int(len(arr)),
+        "mean": float(arr.mean()),
+        "std": float(arr.std()),
+        "median": float(np.median(arr)),
+        "p25": float(np.percentile(arr, 25)),
+        "p75": float(np.percentile(arr, 75)),
+        "max": int(arr.max()),
+    }
 
 
 def main():
     parser = argparse.ArgumentParser(description="QA + per-slice corpus stats")
     parser.add_argument("--config", type=str, default="config.yaml")
+    parser.add_argument("--version", type=str, default=None,
+                        help="Override config['version'] for this run.")
     parser.add_argument("--no-gemma", action="store_true")
     parser.add_argument("--skip-tokens", action="store_true")
     parser.add_argument("--workers", type=int, default=32)
@@ -238,66 +256,52 @@ def main():
     args = parser.parse_args()
 
     config = load_config(args.config)
+    if args.version:
+        config["version"] = args.version
     output_dir = ensure_output_dir(config)
     stats_dir = output_dir / "stats"
     stats_dir.mkdir(parents=True, exist_ok=True)
 
-    # ── 1. QA counts at each stage ─────────────────────────────────────
-    print("\n=== QA stage counts ===")
+    # ── 1. QA + support stats ──────────────────────────────────────────
+    # 2025_09 layout:  qa/final/all_qas.jsonl  (cluster-grouped)
+    #                  qa/final/filtered/{good_qas,val,test}.jsonl  (flat)
+    print("\n=== QA / support counts ===")
     summary = {}
-    for label, fname in [
-        ("qas", "qas.jsonl"),
-        ("qas_with_zeroshot", "qas_with_zeroshot.jsonl"),
-        ("qas_judged", "qas_judged.jsonl"),
-        ("qas_with_supports", "qas_with_supports.jsonl"),
-    ]:
-        path = output_dir / "qa" / fname
-        if path.exists():
-            recs = load_jsonl(str(path))
-            summary[label] = qa_summary(recs, label)
+    qa_root = output_dir / "qa" / "final"
 
-    # Judged breakdown
-    judged_path = output_dir / "qa" / "qas_judged.jsonl"
-    if judged_path.exists():
-        recs = load_jsonl(str(judged_path))
-        n_zeroshot_correct = n_underspecified = n_good = 0
-        for r in recs:
-            for qa in r.get("qas", []):
-                if qa.get("is_zeroshot_correct"):
-                    n_zeroshot_correct += 1
-                if qa.get("is_underspecified"):
-                    n_underspecified += 1
-                if qa.get("is_zeroshot_correct") is False and qa.get("is_underspecified") is False:
-                    n_good += 1
-        summary["judged_breakdown"] = {
-            "zeroshot_correct": n_zeroshot_correct,
-            "underspecified": n_underspecified,
-            "good": n_good,
-        }
-        print(f"  Judged: zeroshot_correct={n_zeroshot_correct}, "
-              f"underspecified={n_underspecified}, good={n_good}")
+    # Cluster-level totals (kept in qa_summary.json for provenance only —
+    # the per-split tables below are what the README displays).
+    all_qas_path = qa_root / "all_qas.jsonl"
+    if all_qas_path.exists():
+        recs = load_jsonl(str(all_qas_path))
+        n_clusters = len(recs)
+        n_qas = sum(len(r.get("qas", [])) for r in recs)
+        summary["all_qas"] = {"n_clusters": n_clusters, "n_qas": n_qas}
+        print(f"  all_qas (raw): {n_clusters} clusters, {n_qas} QAs")
 
-    # Support counts per QA
-    sup_path = output_dir / "qa" / "qas_with_supports.jsonl"
-    if sup_path.exists():
-        recs = load_jsonl(str(sup_path))
-        sup_counts = []
-        for r in recs:
-            for qa in r.get("qas", []):
-                sup_counts.append(len(qa.get("supports") or []))
-        if sup_counts:
-            arr = np.array(sup_counts)
-            summary["support_count_stats"] = {
-                "n_qas": int(len(arr)),
-                "mean": float(arr.mean()),
-                "median": float(np.median(arr)),
-                "p25": float(np.percentile(arr, 25)),
-                "p75": float(np.percentile(arr, 75)),
-                "max": int(arr.max()),
-                "n_zero": int((arr == 0).sum()),
-            }
-            print(f"  Supports: avg {arr.mean():.1f} per QA, max {arr.max()}, n_zero {(arr==0).sum()}")
-            plot_support_count_dist(sup_counts, stats_dir / "support_count_dist.png")
+    # Per-split support stats. Released splits only (val + test) — all_qas
+    # and good_qas include filtered-out items (underspecified / zeroshot),
+    # so reporting them in the README would be misleading.
+    support_stats = {}
+    val_test_counts = []
+    for split_name, fname in [("val", "val.jsonl"), ("test", "test.jsonl")]:
+        path = qa_root / "filtered" / fname
+        if not path.exists():
+            continue
+        recs = load_jsonl(str(path))
+        counts = [len(r.get("supports") or []) for r in recs]
+        support_stats[split_name] = _support_stats(counts)
+        val_test_counts.extend(counts)
+        print(f"  {split_name:<5}: n={len(counts):,}, mean={np.mean(counts):.1f}, "
+              f"max={max(counts) if counts else 0}, n_zero={sum(1 for c in counts if c==0)}")
+    if val_test_counts:
+        plot_support_count_dist(val_test_counts, stats_dir / "support_count_dist.png")
+
+    if support_stats:
+        with open(stats_dir / "support_stats_per_split.json", "w") as f:
+            json.dump(support_stats, f, indent=2)
+        print(f"  Saved {stats_dir / 'support_stats_per_split.json'}")
+        summary["support_stats_per_split"] = support_stats
 
     # ── 2. Per-slice token stats ────────────────────────────────────────
     if not args.skip_tokens:
@@ -333,12 +337,9 @@ def main():
                   f"(n={stats['n']:,}, mean={stats.get('mean', 0):.0f}, "
                   f"median={stats.get('median', 0):.0f}, p99={stats.get('p99', 0):.0f})")
 
-            plot_path = stats_dir / f"token_dist_{name}.png"
-            plot_token_dist(counts, SLICE_LABELS[name], SLICE_COLORS[name], plot_path)
-
-        # Overlay plot comparing all available slices on one axis
-        if counts_by_slice:
-            plot_overlay(counts_by_slice, stats_dir / "token_dist_overlay.png")
+            display = SLICE_DISPLAY[name]
+            plot_path = stats_dir / f"token_dist_{display}.png"
+            plot_token_dist(counts, display, plot_path)
 
         if token_stats_by_slice:
             summary["token_stats_per_slice"] = token_stats_by_slice

@@ -6,6 +6,12 @@ Two upload targets, both private by default:
 
 After upload, the user can do:
 
+    # Geminon index (the structured 600-creature dataset, public + sensitive)
+    load_dataset("ContinuousBench/Geminon", "index",
+                 split="public", revision="v9")     # 480 records
+    load_dataset("ContinuousBench/Geminon", "index",
+                 split="sensitive", revision="v9")  # 120 records
+
     # Geminon corpus (3 sizes × 4 splits)
     load_dataset("ContinuousBench/Geminon", "corpus_large",
                  split="train", revision="v9")
@@ -22,7 +28,7 @@ After upload, the user can do:
     load_dataset("ContinuousBench/News",
                  split="val", revision="v5")
 
-Concrete sizes — Geminon v9 (articles per slice):
+Concrete sizes — Geminon v9:
 
     config           all         train       val      test
     ──────────────────────────────────────────────────────
@@ -30,6 +36,7 @@ Concrete sizes — Geminon v9 (articles per slice):
     corpus_medium    1,000,120     900,108   50,006   50,006
     corpus_small       200,120     180,108   10,006   10,006
 
+    index: 600 creatures  (public 480 + sensitive 120; the structured source)
     qa_medium: 8,400 QAs  (public_val 3,360 + public_test 3,360 + sensitive_val 840 + sensitive_test 840)
     qa_small:  8,400 QAs  (same counts; `supports` filtered to corpus_small articles)
 
@@ -129,22 +136,37 @@ class UploadSpec:
 # Build the upload spec for each curation
 # ───────────────────────────────────────────────────────────────────────────
 def build_geminon_spec(version, local_dir, repo, private,
-                      include_corpus=True, include_qa=True):
-    """Geminon: 3 corpus configs × 4 splits + 2 qa configs × 4 splits."""
+                      include_corpus=True, include_qa=True, include_index=True):
+    """Geminon: index (public+sensitive) + 3 corpus configs × 4 splits + 2 qa configs × 4 splits."""
     spec = UploadSpec(repo=repo, version=version, local_dir=local_dir, private=private)
     corpus_dir = local_dir / "corpus"
     qa_dir = local_dir / "qa"
 
+    # Geminon stat-and-name index — one record per geminon, 600 total split
+    # into 480 public + 120 sensitive. This is the structured source data
+    # that the corpus + QAs are derived from.
+    if include_index:
+        spec.configs.append(ConfigSpec(
+            name="index",
+            splits={
+                "public":    local_dir / "public_geminon_index.jsonl",
+                "sensitive": local_dir / "sensitive_geminon_index.jsonl",
+            },
+        ))
+
     if include_corpus:
         for slice_name in ["large", "medium", "small"]:
             slice_dir = corpus_dir / slice_name
+            # Note: we deliberately exclude `all.jsonl` — it's a redundant
+            # symlink to the full slice file and equals train+val+test
+            # concatenated. Skipping saves the HF storage + bandwidth for
+            # what would be a near-duplicate of the three real splits.
             spec.configs.append(ConfigSpec(
                 name=f"corpus_{slice_name}",
                 splits={
                     "train": slice_dir / "train.jsonl",
                     "val":   slice_dir / "val.jsonl",
                     "test":  slice_dir / "test.jsonl",
-                    "all":   slice_dir / "all.jsonl",
                 },
             ))
 
@@ -188,13 +210,13 @@ def build_news_spec(version, local_dir, repo, private,
     if include_corpus:
         for slice_name in ["large", "medium", "small"]:
             slice_dir = corpus_dir / slice_name
+            # Skip `all.jsonl` (redundant — it's train+val+test concatenated)
             spec.configs.append(ConfigSpec(
                 name=f"corpus_{slice_name}",
                 splits={
                     "train": slice_dir / "train.jsonl",
                     "val":   slice_dir / "val.jsonl",
                     "test":  slice_dir / "test.jsonl",
-                    "all":   slice_dir / "all.jsonl",
                 },
             ))
 
@@ -204,7 +226,7 @@ def build_news_spec(version, local_dir, repo, private,
 # ───────────────────────────────────────────────────────────────────────────
 # README + YAML config generation
 # ───────────────────────────────────────────────────────────────────────────
-def render_readme(spec, curation_label):
+def render_readme(spec, curation_label, will_tag=True):
     """Build a README.md whose YAML frontmatter declares every config + split.
 
     HuggingFace's automatic data file detection picks up the `configs` block
@@ -246,20 +268,43 @@ def render_readme(spec, curation_label):
     lines.append("")
     sample_cfg = next((c for c in spec.configs if not c.is_default), spec.configs[0])
     sample_split = next(iter(sample_cfg.splits))
+    revision_arg = f', revision="{spec.version}"' if will_tag else ""
     if sample_cfg.is_default:
-        lines.append(f'ds = load_dataset("{spec.repo}", split="{sample_split}", revision="{spec.version}")')
+        lines.append(f'ds = load_dataset("{spec.repo}", split="{sample_split}"{revision_arg})')
     else:
         lines.append(
             f'ds = load_dataset("{spec.repo}", "{sample_cfg.name}", '
-            f'split="{sample_split}", revision="{spec.version}")'
+            f'split="{sample_split}"{revision_arg})'
         )
     lines.append("```")
     lines.append("")
     lines.append(f"## Version: `{spec.version}`")
     lines.append("")
-    lines.append(f"Pinned via the `{spec.version}` git tag — pass `revision=\"{spec.version}\"` to `load_dataset`.")
+    if will_tag:
+        lines.append(f"Pinned via the `{spec.version}` git tag — pass `revision=\"{spec.version}\"` to `load_dataset`.")
+    else:
+        lines.append("This is the **latest** push on `main`. No git tag for this version yet — "
+                     "the dataset will be retagged once it's frozen for release. Loads without a "
+                     "`revision=` arg will pick up future updates.")
     lines.append("")
     return "\n".join(lines)
+
+
+# ───────────────────────────────────────────────────────────────────────────
+# README on disk
+# ───────────────────────────────────────────────────────────────────────────
+def write_readme(spec, curation_label, will_tag=True):
+    """Render the README and save it to {spec.local_dir}/README.md.
+
+    Returns the path it was written to. Always overwrites — if you've
+    manually edited the file, run with --use-local-readme to skip this
+    step on re-upload.
+    """
+    readme_path = spec.local_dir / "README.md"
+    body = render_readme(spec, curation_label, will_tag=will_tag)
+    readme_path.write_text(body, encoding="utf-8")
+    print(f"  Wrote {readme_path} ({len(body):,} chars)")
+    return readme_path
 
 
 # ───────────────────────────────────────────────────────────────────────────
@@ -280,7 +325,7 @@ def collect_upload_pairs(spec):
     return pairs
 
 
-def do_upload(spec, curation_label, token, dry_run, skip_tag):
+def do_upload(spec, curation_label, token, dry_run, skip_tag, use_local_readme=False):
     pairs = collect_upload_pairs(spec)
     total_size = sum(s for _, _, s in pairs)
 
@@ -298,8 +343,21 @@ def do_upload(spec, curation_label, token, dry_run, skip_tag):
         size_str = f"{size / 1e6:.1f} MB" if size < 1e9 else f"{size / 1e9:.2f} GB"
         print(f"  {repo_path:<40} {size_str:>10}  ←  {local}")
 
+    # README handling — write to local_dir first, then upload from there.
+    # Useful: lets the user inspect/version the README alongside the data,
+    # and re-upload without re-rendering by passing --use-local-readme.
+    print("\nREADME:")
+    readme_path = spec.local_dir / "README.md"
+    if use_local_readme:
+        if not readme_path.exists():
+            print(f"  ERROR: --use-local-readme set but {readme_path} does not exist", file=sys.stderr)
+            sys.exit(1)
+        print(f"  Using existing {readme_path} (--use-local-readme)")
+    else:
+        write_readme(spec, curation_label, will_tag=not skip_tag)
+
     if dry_run:
-        print("\n[DRY RUN] No upload performed.")
+        print(f"\n[DRY RUN] No upload performed. Inspect {readme_path} before re-running without --dry-run.")
         return
 
     # Lazy import so dry-run doesn't need the dep
@@ -338,11 +396,12 @@ def do_upload(spec, curation_label, token, dry_run, skip_tag):
     )
 
     # 2. Upload README first (so YAML configs are visible if a user browses
-    #    the repo while uploads are in progress)
-    readme = render_readme(spec, curation_label)
-    print(f"Uploading README.md ({len(readme)} chars)")
+    #    the repo while uploads are in progress). Reads from local_dir/README.md,
+    #    which was either just written by write_readme() or supplied via
+    #    --use-local-readme.
+    print(f"Uploading {readme_path}")
     api.upload_file(
-        path_or_fileobj=readme.encode("utf-8"),
+        path_or_fileobj=str(readme_path),
         path_in_repo="README.md",
         repo_id=spec.repo,
         repo_type="dataset",
@@ -403,7 +462,11 @@ def do_upload(spec, curation_label, token, dry_run, skip_tag):
                 else:
                     raise
 
-    print(f"\nDone! View at https://huggingface.co/datasets/{spec.repo}/tree/{spec.version}")
+    # Link to the tagged tree if we tagged, otherwise link to main
+    branch = spec.version if not skip_tag else "main"
+    print(f"\nDone! View at https://huggingface.co/datasets/{spec.repo}/tree/{branch}")
+    if skip_tag:
+        print(f"  (no version tag created — re-run without --skip-tag to tag this commit as `{spec.version}`)")
 
 
 # ───────────────────────────────────────────────────────────────────────────
@@ -427,10 +490,17 @@ def main():
                         help="Skip corpus configs")
     parser.add_argument("--skip-qa", action="store_true",
                         help="Skip QA configs")
+    parser.add_argument("--skip-index", action="store_true",
+                        help="Skip the geminon index config (no-op for news)")
     parser.add_argument("--skip-tag", action="store_true",
                         help="Don't create the version tag after upload")
+    parser.add_argument("--render-only", action="store_true",
+                        help="Only render the README to {local_dir}/README.md and exit. No upload.")
+    parser.add_argument("--use-local-readme", action="store_true",
+                        help="Skip re-rendering and upload {local_dir}/README.md as-is. "
+                             "Useful after manually editing a previously rendered README.")
     parser.add_argument("--dry-run", action="store_true",
-                        help="Print the upload plan without uploading anything")
+                        help="Print the upload plan + write README locally, but don't upload")
     args = parser.parse_args()
 
     repo = args.repo or DEFAULT_REPOS[args.curation]
@@ -453,6 +523,7 @@ def main():
             private=private,
             include_corpus=not args.skip_corpus,
             include_qa=not args.skip_qa,
+            include_index=not args.skip_index,
         )
     else:
         spec = build_news_spec(
@@ -464,7 +535,20 @@ def main():
             include_qa=not args.skip_qa,
         )
 
-    do_upload(spec, args.curation, token=token, dry_run=args.dry_run, skip_tag=args.skip_tag)
+    if args.render_only:
+        print(f"\nRendering README only (no upload).")
+        write_readme(spec, args.curation, will_tag=not args.skip_tag)
+        print(f"\nDone. Inspect / edit:\n  {spec.local_dir / 'README.md'}\n"
+              f"Then re-run with --use-local-readme to push it as-is, or without to re-render.")
+        return
+
+    do_upload(
+        spec, args.curation,
+        token=token,
+        dry_run=args.dry_run,
+        skip_tag=args.skip_tag,
+        use_local_readme=args.use_local_readme,
+    )
 
 
 if __name__ == "__main__":

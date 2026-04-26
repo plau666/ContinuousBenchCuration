@@ -159,6 +159,12 @@ After upload, downstream consumers can do exactly the loading patterns you'd exp
 ```python
 from datasets import load_dataset
 
+# Geminon index (the structured 600-creature dataset)
+load_dataset("ContinuousBench/Geminon", "index",
+             split="public", revision="v9")      # 480 records
+load_dataset("ContinuousBench/Geminon", "index",
+             split="sensitive", revision="v9")   # 120 records
+
 # Geminon corpus (3 sizes × 4 splits each)
 load_dataset("ContinuousBench/Geminon", "corpus_large",
              split="train", revision="v9")
@@ -176,6 +182,12 @@ load_dataset("ContinuousBench/News", split="val", revision="v5")
 ```
 
 ### Dataset sizes
+
+**Geminon v9 — index** (the structured source data):
+
+| config  | `public` | `sensitive` |
+|---------|---------:|------------:|
+| `index` |      480 |         120 |
 
 **Geminon v9 — corpus** (articles per slice):
 
