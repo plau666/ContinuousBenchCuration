@@ -1,7 +1,7 @@
 """Stage 19: Per-slice corpus token-count distributions + QA support-count stats.
 
 What it does:
-  1. For each corpus slice (`large`, `median`, `small`), tokenizes every
+  1. For each corpus slice (`large`, `medium`, `small`), tokenizes every
      article with the Gemma 3 tokenizer (or whitespace fallback) and writes
      the raw counts, a percentile summary, and a KDE plot with inline
      cutoff annotations at 256 / 512 / 1024 / 2048 / 4096 tokens.
@@ -13,14 +13,14 @@ Inputs (under {output_dir}/{version}/):
                                         (schema: {cluster_id, qas: [{supports: [...]}]})
   qa/final/filtered/{val,test}.jsonl    released QA splits, flat
                                         (schema: {question, supports: [...]})
-  corpus/{large,median,small}.jsonl     per-slice full corpora
+  corpus/{large,medium,small}.jsonl     per-slice full corpora
 
 Outputs (under {output_dir}/{version}/stats/):
   qa_summary.json                        cluster + QA counts and per-split support stats
   support_stats_per_split.json           {val, test} → {n_qas, mean, median, p25, p75, std, max}
   support_count_dist.png                 histogram across val + test
-  token_counts_{large,median,small}.json   raw per-article token counts
-  token_stats_{large,median,small}.json    summary {n, mean, std, p25/median/p75/p90/p99, max}
+  token_counts_{large,medium,small}.json   raw per-article token counts
+  token_stats_{large,medium,small}.json    summary {n, mean, std, p25/median/p75/p90/p99, max}
   token_dist_News_{Large,Medium,Small}.png KDE plot per slice (x_max=4096)
 
 Usage:
@@ -50,7 +50,7 @@ import numpy as np
 from utils.io import load_config, load_jsonl, ensure_output_dir
 
 
-SLICE_NAMES = ["large", "median", "small"]
+SLICE_NAMES = ["large", "medium", "small"]
 # All slices use the same blue (matches geminon's aggregate plot style).
 SLICE_COLOR = "#1F77B4"
 # Display name shown in the plot title and used as the filename slug, e.g.
@@ -58,7 +58,7 @@ SLICE_COLOR = "#1F77B4"
 # `token_dist_Geminon{,200k,1m}.png` naming.
 SLICE_DISPLAY = {
     "large":  "News_Large",
-    "median": "News_Medium",
+    "medium": "News_Medium",
     "small":  "News_Small",
 }
 
