@@ -24,7 +24,7 @@ Usage:
 
     # Override the repo
     python -m tools.meta_data --curation geminon --version 2025_09 \\
-        --repo pl666/ContinuousBench-Geminon
+        --repo 
 """
 
 import argparse

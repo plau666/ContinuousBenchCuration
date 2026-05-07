@@ -5,15 +5,20 @@ windowed clustering, merges across windows, and writes
 {output_dir}/{version}/clustered/clustered_articles.json (the canonical
 input format for the QA pipeline downstream).
 
-This is a thin wrapper around the production-quality
-`/home/peihanliu/dpsynth/datasets/news/CC/local_cluster.py` (~800 lines of
-GPU+Leiden code) — duplicating it here would be wasteful. The wrapper
-constructs the right CLI args from config.yaml and shells out.
+This is a thin wrapper around an external clustering implementation
+(~800 lines of GPU+Leiden code) — duplicating it here would be wasteful.
+The wrapper constructs the right CLI args from config.yaml and shells out.
 
-Set `--source-script` if your copy of the original lives elsewhere.
+Point it at your copy of the source script via either:
+  - the `CC_LOCAL_CLUSTER_SCRIPT` environment variable, or
+  - the `--source-script` flag.
 
 Usage:
-    python 05_local_cluster.py --config config.yaml
+    CC_LOCAL_CLUSTER_SCRIPT=/path/to/local_cluster.py \\
+        python 05_local_cluster.py --config config.yaml
+
+    # or
+    python 05_local_cluster.py --config config.yaml --source-script /path/to/local_cluster.py
 """
 
 import argparse
@@ -24,16 +29,23 @@ from pathlib import Path
 
 from utils.io import load_config, ensure_output_dir
 
-DEFAULT_SOURCE_SCRIPT = "/home/peihanliu/dpsynth/datasets/news/CC/local_cluster.py"
-
 
 def main():
     parser = argparse.ArgumentParser(description="Local clustering wrapper")
     parser.add_argument("--config", type=str, default="config.yaml")
-    parser.add_argument("--source-script", type=str, default=DEFAULT_SOURCE_SCRIPT,
-                        help="Path to the original local_cluster.py implementation")
+    parser.add_argument(
+        "--source-script", type=str,
+        default=os.environ.get("CC_LOCAL_CLUSTER_SCRIPT"),
+        help="Path to the external local_cluster.py implementation. "
+             "Defaults to $CC_LOCAL_CLUSTER_SCRIPT if set; required otherwise.",
+    )
     parser.add_argument("--gpu", type=int, default=0, help="GPU id to use")
     args = parser.parse_args()
+
+    if not args.source_script:
+        print("ERROR: --source-script not set and $CC_LOCAL_CLUSTER_SCRIPT is empty.")
+        print("Point this at your copy of local_cluster.py and re-run.")
+        sys.exit(2)
 
     config = load_config(args.config)
     output_dir = ensure_output_dir(config)

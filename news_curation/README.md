@@ -2,7 +2,7 @@
 
 End-to-end pipeline for building a fresh news QA dataset from a Common Crawl News dump. Same design philosophy as [`../geminon_curation/`](../geminon_curation/) — small numbered scripts, prompts saved as JSONL, LLM querying decoupled into [`../tools/query_gemini.py`](../tools/query_gemini.py).
 
-The pipeline mirrors the one in `/home/peihanliu/dpsynth/datasets/news/CC/` but with the LLM stages refactored into the **save-prompts → query → apply-responses** pattern, so you can swap in any batch system or rerun individual stages without touching the rest.
+The pipeline mirrors an earlier reference implementation, but with the LLM stages refactored into the **save-prompts → query → apply-responses** pattern, so you can swap in any batch system or rerun individual stages without touching the rest.
 
 ---
 
@@ -375,7 +375,7 @@ Same as geminon — uses [`tools/push_to_hf.py`](../tools/push_to_hf.py):
 export HF_TOKEN=hf_xxx
 
 python -m tools.push_to_hf \
-    --repo pl666/ContinuousBench \
+    --repo ... \
     --curation news \
     --version v1 \
     --local-dir news_curation/output/v1 \
@@ -391,4 +391,4 @@ Files land at `news/v1/...` inside the dataset repo.
 
 **Stage 4 (embeddings)** — single-process by default. The original CC pipeline shards across multiple GPUs; you can either run multiple copies of `04_compute_embeddings.py` with `--shard-idx`/`--shard-total` and concatenate the outputs, or call the original `compute_text_embeds.py` directly.
 
-**Stage 5 (clustering)** — thin wrapper around `/home/peihanliu/dpsynth/datasets/news/CC/local_cluster.py` (~800 lines of windowed kNN + Leiden + GPU code). Pass `--source-script PATH` if your copy lives elsewhere. The wrapper just constructs CLI args from `config.yaml` and shells out.
+**Stage 5 (clustering)** — thin wrapper around an external `local_cluster.py` (~800 lines of windowed kNN + Leiden + GPU code). Set the `CC_LOCAL_CLUSTER_SCRIPT` environment variable, or pass `--source-script PATH`, to point at your copy. The wrapper just constructs CLI args from `config.yaml` and shells out.
