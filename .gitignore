@@ -44,3 +44,6 @@ ENV/
 *.log
 tmp/
 .tmp/
+
+# Local-only tools (kept out of the public repo)
+tools/meta_data.py
