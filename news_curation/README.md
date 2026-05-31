@@ -346,35 +346,6 @@ To create a new version, copy `config.yaml`, change `version:` and any params, t
 
 ---
 
-## Where shared code lives
-
-Generic utilities live in [`../tools/`](../tools/) and are re-exported through `news_curation/utils/`:
-
-- `tools.io` — JSONL, config, response parsing, NumpyEncoder
-- `tools.dedup` — exact + MinHash LSH near-dedup (used in stage 3)
-- `tools.query_gemini` — Gemini API utility with key rotation + retry + resume
-- `tools.push_to_hf` — HuggingFace dataset push
-
-News-specific utilities in `news_curation/utils/`:
-- `utils.normalize` — text normalization (paragraph cleanup, soft linebreak unwrap)
-- `utils.io.ensure_output_dir` — creates the news subfolder layout
-
----
-
-## Pushing to HuggingFace
-
-Same as geminon — uses [`tools/push_to_hf.py`](../tools/push_to_hf.py):
-
-```bash
-export HF_TOKEN=hf_xxx
-
-python -m tools.push_to_hf --curation news --version 2025_09
-```
-
-Defaults: target repo is `ContinuousBench/News`, the commit is tagged `2025_09`. Pass `--repo <org>/<name>` to publish under a different org, or `--public` / `--skip-tag` to override the defaults. See `python -m tools.push_to_hf --help` for the full flag list.
-
----
-
 ## Notes on the heavy stages
 
 **Stage 4 (embeddings)** — single-process by default. The original CC pipeline shards across multiple GPUs; you can either run multiple copies of `04_compute_embeddings.py` with `--shard-idx`/`--shard-total` and concatenate the outputs, or call the original `compute_text_embeds.py` directly.

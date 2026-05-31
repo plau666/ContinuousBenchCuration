@@ -223,29 +223,3 @@ All version-specific knobs live in [config.yaml](config.yaml):
 
 To create a new version, copy `config.yaml`, change `version:`, tweak parameters, then re-run all stages with `--config your_config.yaml`. Old versions are untouched.
 
----
-
-## Where shared code lives
-
-Generic utilities (used by both `geminon_curation` and `news_curation`) live in [../tools/](../tools/):
-- `tools/io.py` — JSONL, config, response parsing
-- `tools/dedup.py` — exact + near dedup
-- `tools/balanced_sampler.py` — feature-aware balanced sampling
-- `tools/query_gemini.py` — Gemini API utility
-- `tools/push_to_hf.py` — HuggingFace dataset push
-
-The `utils/` folder here re-exports those plus geminon-specific helpers (PokeAPI cache, Pokémon stat distributions, geminon canonical feature normalization). The numbered stage scripts use `from utils.* import ...` for everything, so they don't need to know whether a function is shared or geminon-specific.
-
----
-
-## Pushing to HuggingFace
-
-```bash
-export HF_TOKEN=hf_xxx
-
-python -m tools.push_to_hf \
-    --curation geminon \
-    --version 2025_09
-```
-
-This pushes to the default repo `ContinuousBench/Geminon` and tags the commit `2025_09` (override the target with `--repo <org>/<name>`). See `python -m tools.push_to_hf --help` for all options (`--public`, `--skip-tag`, `--skip-qa`, `--skip-corpus`, `--dry-run`, etc.).
