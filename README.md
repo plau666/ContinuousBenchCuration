@@ -109,16 +109,6 @@ load_dataset("ContinuousBench/Geminon", "index",
 
 ---
 
-## Conventions
-
-- **JSONL everywhere** — every pipeline file is line-delimited JSON, streamed where possible to keep memory bounded on multi-GB corpora.
-- **Stable global IDs** — `geminon_idx` / `article_idx` are assigned at the earliest stage and propagated through every downstream slice, so any sample traces back to its source record.
-- **Seeded everything** — every script that uses randomness reads its seed from `config.yaml`; re-runs with the same seed produce byte-identical partitions.
-- **Save-prompts → query → apply** — every LLM-touching stage writes prompts as JSONL, the query step adds a `response` field, and the apply step parses responses. You can always inspect what was sent and what came back.
-- **Idempotent re-runs** — expensive stages skip work when their outputs already exist, so partial re-runs are cheap.
-
----
-
 ## Documentation
 
 | File | Contents |
