@@ -20,61 +20,16 @@ Both pipelines share the same design principles and were intentionally written i
 
 ```
 ContinuousBenchCuration/
-├── README.md                    ← you are here
-├── requirements.txt             ← combined deps for both pipelines + tools/
-├── .gitignore                   ← excludes output/ from git (regenerable, large)
-│
-├── tools/                       ← project-wide shared utilities
-│   ├── io.py                    ← JSONL, YAML config, response parsing, NumpyEncoder
-│   ├── dedup.py                 ← exact (SHA-256) + near (MinHash LSH) dedup
-│   ├── balanced_sampler.py      ← feature-aware iterative weighted sampling
-│   ├── split.py                 ← seeded train/val/test split helper
-│   ├── query_gemini.py          ← standalone Gemini API utility (key rotation, retry, resume)
-│   └── push_to_hf.py            ← HuggingFace dataset uploader (config + revision tags)
-│
-├── geminon_curation/            ← Geminon pipeline (8 numbered stages)
-│   ├── README.md
-│   ├── config.yaml
-│   ├── 01_generate_index.py     ← stat skeleton, no LLM
-│   ├── 02_save_naming_prompts.py
-│   ├── 03_apply_names.py        ← + dedup + public/sensitive split
-│   ├── 04_generate_corpus_prompts.py
-│   ├── 05_process_corpus.py     ← parse, normalize, dedup, balanced sample,
-│   │                               build large/medium/small + train/val/test
-│   ├── 06_generate_qa.py
-│   ├── 07_split_qa.py           ← stratified val/test, qa/{small,medium}/
-│   ├── 08_compute_stats.py
-│   ├── templates/               ← prompt templates (naming, wiki, journal, etc.)
-│   ├── utils/                   ← geminon-specific helpers (re-exports tools)
-│   └── reference_pokemon_data/  ← committed Pokémon CSVs + PokeAPI cache
-│
-└── news_curation/               ← News pipeline (19 numbered stages)
-    ├── README.md
-    ├── config.yaml
-    ├── 01_download_warcs.py
-    ├── 02_extract_articles.py
-    ├── 03_cleanup_dedup.py      ← assigns global article_idx
-    ├── 04_compute_embeddings.py
-    ├── 05_local_cluster.py      ← thin wrapper around the original GPU+Leiden script
-    ├── 06_save_fact_prompts.py
-    ├── 07_apply_facts.py
-    ├── 08_save_qa_prompts.py
-    ├── 09_apply_qas.py
-    ├── 10_save_zeroshot_prompts.py
-    ├── 11_apply_zeroshot.py
-    ├── 12_save_judge_prompts.py
-    ├── 13_apply_judge.py
-    ├── 14_compute_support_embeddings.py  ← fact + question + doc embeds
-    ├── 15_save_support_prompts.py        ← top-k retrieval, support + openbook prompts
-    ├── 16_apply_support.py               ← post-processed all_qas.jsonl
-    ├── 17_filter_good_qas.py             ← flat slim schema + per-cluster val/test
-    ├── 18_split_corpus.py                ← large/medium/small + train/val/test
-    ├── 19_compute_stats.py               ← per-slice token + support distributions
-    ├── templates/
-    └── utils/
+├── README.md                ← you are here
+├── requirements.txt         ← combined deps for both pipelines + tools/
+├── tools/                   ← shared utilities (io, dedup, sampling, split,
+│                              query_gemini, push_to_hf, meta_data)
+├── geminon_curation/        ← Geminon pipeline — 8 numbered stages,
+│                              templates/, committed reference Pokémon CSVs
+└── news_curation/           ← News pipeline — 19 numbered stages, templates/
 ```
 
-The numbered stage scripts in each pipeline are heavily commented and self-describing. For pipeline-specific quick starts and output schemas, read the per-pipeline READMEs:
+For per-pipeline quick starts, stage tables, and output schemas, read the per-pipeline READMEs:
 - [geminon_curation/README.md](geminon_curation/README.md)
 - [news_curation/README.md](news_curation/README.md)
 
@@ -132,101 +87,35 @@ The corpus slices are uniformly named so downstream loaders don't have to know w
 
 ---
 
-## Pushing to HuggingFace
+## Using the released datasets
 
-[`tools/push_to_hf.py`](tools/push_to_hf.py) is opinionated about both pipelines' dataset shape. It uploads everything as proper HuggingFace datasets with YAML-frontmatter configs and a git tag for the version, so downstream consumers can pin a specific release with `revision=...`.
-
-**Authentication.** The script auto-discovers a token in this order: `--token` arg → `$HF_TOKEN` env var → `~/.cache/huggingface/token` (set by `huggingface-cli login`). Any one is sufficient.
-
-```bash
-# Either of these is enough:
-#   huggingface-cli login
-# or: export HF_TOKEN=hf_xxx
-
-# Geminon → ContinuousBench/Geminon, commit tagged with the version label
-python -m tools.push_to_hf --curation geminon --version 2025_09
-
-# News → ContinuousBench/News
-python -m tools.push_to_hf --curation news --version 2025_09
-
-# Dry-run, skip QA, skip tagging, push as public, reuse an already-rendered README
-python -m tools.push_to_hf --curation geminon --version 2025_09 --dry-run
-python -m tools.push_to_hf --curation news    --version 2025_09 --skip-qa --skip-tag
-python -m tools.push_to_hf --curation news    --version 2025_09 --public --use-local-readme
-```
-
-After upload, downstream consumers can do exactly the loading patterns you'd expect:
+The released versions live on HuggingFace at [`ContinuousBench/Geminon`](https://huggingface.co/datasets/ContinuousBench/Geminon) and [`ContinuousBench/News`](https://huggingface.co/datasets/ContinuousBench/News). Per-config splits and sizes are documented on each dataset card.
 
 ```python
 from datasets import load_dataset
 
-# Geminon index (the structured 600-creature dataset)
-load_dataset("ContinuousBench/Geminon", "index", split="public")     # 480 records
-load_dataset("ContinuousBench/Geminon", "index", split="sensitive")  # 120 records
-
-# Geminon corpus (3 sizes × 4 splits each)
 load_dataset("ContinuousBench/Geminon", "corpus_large", split="train")
+load_dataset("ContinuousBench/Geminon", "qa_small",     split="public_val")
 
-# Geminon QA (2 sizes × 4 splits each)
-load_dataset("ContinuousBench/Geminon", "qa_small", split="public_val")
+load_dataset("ContinuousBench/News",    "corpus_large", split="train")
+load_dataset("ContinuousBench/News",    split="val")      # qa is the default config
 
-# News corpus (3 sizes × 4 splits each)
-load_dataset("ContinuousBench/News", "corpus_large", split="train")
-
-# News QA (default config — no config_name needed)
-load_dataset("ContinuousBench/News", split="val")
-
-# Pin a specific release via revision=<version-tag>
+# Pin a specific release
 load_dataset("ContinuousBench/Geminon", "index",
              split="public", revision="2025_09")
 ```
 
-### Dataset sizes (release `2025_09`)
-
-**Geminon — index** (the structured source data):
-
-| config  | `public` | `sensitive` |
-|---------|---------:|------------:|
-| `index` |      480 |         120 |
-
-**Geminon — corpus** (articles per slice):
-
-| config          |     `all` |    `train` |    `val` |   `test` |
-|-----------------|----------:|-----------:|---------:|---------:|
-| `corpus_large`  | 1,523,754 |  1,371,378 |   76,187 |   76,189 |
-| `corpus_medium` | 1,000,120 |    900,108 |   50,006 |   50,006 |
-| `corpus_small`  |   200,120 |    180,108 |   10,006 |   10,006 |
-
-**Geminon — QA** (QAs per slice):
-
-- `qa_medium` — 8,400 QAs across 4 splits: `public_val` (3,360), `public_test` (3,360), `sensitive_val` (840), `sensitive_test` (840)
-- `qa_small`  — same counts, with `supports` filtered to articles in `corpus_small`
-
-**News — corpus** (articles per slice; `small ⊆ medium ⊆ large` by construction):
-
-| config          |     `all` |    `train` |    `val` |   `test` |
-|-----------------|----------:|-----------:|---------:|---------:|
-| `corpus_large`  | 1,768,567 |  1,591,710 |   88,428 |   88,429 |
-| `corpus_medium` |   580,582 |    522,523 |   29,029 |   29,030 |
-| `corpus_small`  |   212,980 |    191,682 |   10,649 |   10,649 |
-
-**News — QA** (default config, no `config_name` needed):
-
-- `val`:  1,189 QAs
-- `test`: 1,415 QAs (gets the per-cluster rounding remainder)
-- Total: 2,604 good QAs that pass both the `is_underspecified == False` and `closedbook_gemini-2.5-pro.is_correct == False` filters.
-
-All splits use a **seeded 90/5/5 shuffle** (`config.seed`, default 42). Train + val + test sums equal the `all` slice count for every corpus config.
+> **Publishing your own version.** If you regenerate either dataset and want to host it on HuggingFace, [`tools/push_to_hf.py`](tools/push_to_hf.py) renders a YAML-frontmatter dataset card with `configs` + splits and (optionally) tags the commit with your version label. Pass `--repo your-org/your-dataset` to override the default upload target. See `python -m tools.push_to_hf --help` for the full flag set (`--public`, `--skip-tag`, `--skip-qa`, `--dry-run`, …). [`tools/meta_data.py`](tools/meta_data.py) does the matching Croissant + RAI merge.
 
 ---
 
 ## Conventions
 
-- **JSONL everywhere.** Every pipeline file is line-delimited JSON. Records are streamed line-by-line wherever possible to keep memory bounded on the multi-GB corpus files.
-- **Stable global IDs.** Both pipelines assign a `geminon_idx` / `article_idx` to every record at the earliest possible stage and propagate it through every downstream slice, so you can trace any sample back to the original source record without ambiguity.
-- **Seeded everything.** Every script that uses randomness (sampling, shuffling, val/test splits, balanced sampling, Leiden clustering) takes its seed from `config.yaml` so re-runs are byte-identical. Same seed always produces the same partition.
-- **Save-prompts → query → apply.** All LLM-touching stages follow this three-step pattern. The save-prompts stage writes a JSONL of `{idx, prompt, tag}` records, the query stage adds a `response` field, and the apply stage parses responses into the next pipeline file. This means you can always inspect what was sent and what came back.
-- **Idempotent re-runs.** Stages that are expensive to re-run (news cleanup/dedup, news 18_split_corpus byte-copy, geminon dedup) detect existing outputs and skip work. The corpus slice files are reused on re-runs, so adding train/val/test splits to an existing version is fast.
+- **JSONL everywhere** — every pipeline file is line-delimited JSON, streamed where possible to keep memory bounded on multi-GB corpora.
+- **Stable global IDs** — `geminon_idx` / `article_idx` are assigned at the earliest stage and propagated through every downstream slice, so any sample traces back to its source record.
+- **Seeded everything** — every script that uses randomness reads its seed from `config.yaml`; re-runs with the same seed produce byte-identical partitions.
+- **Save-prompts → query → apply** — every LLM-touching stage writes prompts as JSONL, the query step adds a `response` field, and the apply step parses responses. You can always inspect what was sent and what came back.
+- **Idempotent re-runs** — expensive stages skip work when their outputs already exist, so partial re-runs are cheap.
 
 ---
 
