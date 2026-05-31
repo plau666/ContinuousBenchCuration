@@ -23,13 +23,13 @@ The pipeline reads three Pokémon CSVs and a PokeAPI evolution cache from [refer
 
 ## Quick start
 
-The fastest path to a complete v9 dataset (assuming you have Gemini API keys):
+The fastest path to a complete dataset version (assuming you have Gemini API keys). Replace `2025_09` with whatever label you set in `config.yaml` (`version:`).
 
 ```bash
 # Run from the project root: ContinuousBenchCuration/
 cd geminon_curation
 
-# 0. Edit config.yaml — change `version: "v9"` to your new version label
+# 0. Edit config.yaml — set `version: "<your label>"` (e.g. "2025_09")
 
 # 1. Generate the unnamed index (stats, types, moves, abilities)
 python 01_generate_index.py --config config.yaml
@@ -37,19 +37,19 @@ python 01_generate_index.py --config config.yaml
 # 2. Save naming prompts as JSONL
 python 02_save_naming_prompts.py --config config.yaml
 
-# 3. Query Gemini for names (or run prompts through your own system)
+# 3. Query Gemini for names (or run prompts through your own system).
 #    `python -m tools.query_gemini` must be run from the project root.
 cd ..
 python -m tools.query_gemini \
-    --input geminon_curation/output/v9/prompts/naming_prompts.jsonl \
-    --output geminon_curation/output/v9/responses/naming_responses.jsonl \
+    --input  geminon_curation/output/2025_09/prompts/naming_prompts.jsonl \
+    --output geminon_curation/output/2025_09/responses/naming_responses.jsonl \
     --api-keys $GEMINI_KEY1,$GEMINI_KEY2
 cd geminon_curation
 
-# 4. Apply names, dedupe, split into public/sensitive
+# 4. Apply names, dedup, split into public/sensitive
 python 03_apply_names.py \
     --config config.yaml \
-    --responses output/v9/responses/naming_responses.jsonl
+    --responses output/2025_09/responses/naming_responses.jsonl
 # (If duplicates are detected, follow the printed instructions to re-query.)
 
 # 5. Generate corpus prompts
@@ -59,20 +59,20 @@ python 04_generate_corpus_prompts.py --config config.yaml
 cd ..
 for ptype in public_wiki public_journal public_chain public_comparison sensitive_wiki; do
     python -m tools.query_gemini \
-        --input geminon_curation/output/v9/prompts/${ptype}_prompts.jsonl \
-        --output geminon_curation/output/v9/responses/${ptype}_responses.jsonl \
+        --input  geminon_curation/output/2025_09/prompts/${ptype}_prompts.jsonl \
+        --output geminon_curation/output/2025_09/responses/${ptype}_responses.jsonl \
         --api-keys $GEMINI_KEY1,$GEMINI_KEY2 \
         --max-workers 32 --resume
 done
 cd geminon_curation
 
-# 7. Process corpus: parse, normalize, dedupe, balanced sample
+# 7. Process corpus: parse, normalize, dedup, balanced sample
 python 05_process_corpus.py --config config.yaml
 
-# 8. Generate factual QA pairs (with `supports` lookup into deduped corpus)
+# 8. Generate factual QA pairs (with `supports` lookup into the deduped corpus)
 python 06_generate_qa.py --config config.yaml
 
-# 9. Stratified val/test split + supports filtering for 200k and 1m subsets
+# 9. Stratified val/test split + supports filtering for the 200k and 1M subsets
 python 07_split_qa.py --config config.yaml
 
 # 10. (Optional) compute token + support stats and plots
@@ -103,7 +103,7 @@ python 08_compute_stats.py --config config.yaml
 After running everything, `output/{version}/` looks like:
 
 ```
-output/v9/
+output/2025_09/
 ├── geminon_index_unnamed.jsonl          # Stage 1
 ├── geminon_index.jsonl                  # Stage 3
 ├── public_geminon_index.jsonl           # Stage 3
@@ -244,11 +244,8 @@ The `utils/` folder here re-exports those plus geminon-specific helpers (PokeAPI
 export HF_TOKEN=hf_xxx
 
 python -m tools.push_to_hf \
-    --repo pl666/ContinuousBench \
     --curation geminon \
-    --version v9 \
-    --local-dir geminon_curation/output/v9 \
-    --private
+    --version 2025_09
 ```
 
-Files land at `geminon/v9/...` inside the repo. See `python -m tools.push_to_hf --help` for all options (`--include`, `--dry-run`, etc.).
+This pushes to the default repo `ContinuousBench/Geminon` and tags the commit `2025_09` (override the target with `--repo <org>/<name>`). See `python -m tools.push_to_hf --help` for all options (`--public`, `--skip-tag`, `--skip-qa`, `--skip-corpus`, `--dry-run`, etc.).

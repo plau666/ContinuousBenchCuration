@@ -4,11 +4,11 @@ Reads the unnamed index and naming responses, applies names, checks for
 duplicates, and outputs the final named index files.
 
 Usage:
-    python 03_apply_names.py --config config.yaml --responses output/v9/naming_responses.jsonl
-    python 03_apply_names.py --config config.yaml --responses output/v9/naming_responses.jsonl \
-        --name-requery-responses output/v9/naming_requery_responses.jsonl
-    python 03_apply_names.py --config config.yaml --responses output/v9/naming_responses.jsonl \
-        --cls-requery-responses output/v9/classification_requery_responses.jsonl
+    python 03_apply_names.py --config config.yaml --responses output/2025_09/responses/naming_responses.jsonl
+    python 03_apply_names.py --config config.yaml --responses output/2025_09/responses/naming_responses.jsonl \
+        --name-requery-responses output/2025_09/responses/naming_requery_responses.jsonl
+    python 03_apply_names.py --config config.yaml --responses output/2025_09/responses/naming_responses.jsonl \
+        --cls-requery-responses output/2025_09/responses/classification_requery_responses.jsonl
 """
 
 import argparse

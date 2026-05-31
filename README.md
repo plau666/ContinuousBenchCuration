@@ -143,15 +143,16 @@ The corpus slices are uniformly named so downstream loaders don't have to know w
 #   huggingface-cli login
 # or: export HF_TOKEN=hf_xxx
 
-# Geminon → ContinuousBench/Geminon (private, tagged v9)
-python -m tools.push_to_hf --curation geminon --version v9
+# Geminon → ContinuousBench/Geminon, commit tagged with the version label
+python -m tools.push_to_hf --curation geminon --version 2025_09
 
-# News → ContinuousBench/News (private, tagged v5)
-python -m tools.push_to_hf --curation news --version v5
+# News → ContinuousBench/News
+python -m tools.push_to_hf --curation news --version 2025_09
 
-# Dry-run, skip QA, skip tagging
-python -m tools.push_to_hf --curation geminon --version v9 --dry-run
-python -m tools.push_to_hf --curation news --version v5 --skip-qa --skip-tag
+# Dry-run, skip QA, skip tagging, push as public, reuse an already-rendered README
+python -m tools.push_to_hf --curation geminon --version 2025_09 --dry-run
+python -m tools.push_to_hf --curation news    --version 2025_09 --skip-qa --skip-tag
+python -m tools.push_to_hf --curation news    --version 2025_09 --public --use-local-readme
 ```
 
 After upload, downstream consumers can do exactly the loading patterns you'd expect:
@@ -160,36 +161,35 @@ After upload, downstream consumers can do exactly the loading patterns you'd exp
 from datasets import load_dataset
 
 # Geminon index (the structured 600-creature dataset)
-load_dataset("ContinuousBench/Geminon", "index",
-             split="public", revision="v9")      # 480 records
-load_dataset("ContinuousBench/Geminon", "index",
-             split="sensitive", revision="v9")   # 120 records
+load_dataset("ContinuousBench/Geminon", "index", split="public")     # 480 records
+load_dataset("ContinuousBench/Geminon", "index", split="sensitive")  # 120 records
 
 # Geminon corpus (3 sizes × 4 splits each)
-load_dataset("ContinuousBench/Geminon", "corpus_large",
-             split="train", revision="v9")
+load_dataset("ContinuousBench/Geminon", "corpus_large", split="train")
 
 # Geminon QA (2 sizes × 4 splits each)
-load_dataset("ContinuousBench/Geminon", "qa_small",
-             split="public_val", revision="v9")
+load_dataset("ContinuousBench/Geminon", "qa_small", split="public_val")
 
 # News corpus (3 sizes × 4 splits each)
-load_dataset("ContinuousBench/News", "corpus_large",
-             split="train", revision="v5")
+load_dataset("ContinuousBench/News", "corpus_large", split="train")
 
 # News QA (default config — no config_name needed)
-load_dataset("ContinuousBench/News", split="val", revision="v5")
+load_dataset("ContinuousBench/News", split="val")
+
+# Pin a specific release via revision=<version-tag>
+load_dataset("ContinuousBench/Geminon", "index",
+             split="public", revision="2025_09")
 ```
 
-### Dataset sizes
+### Dataset sizes (release `2025_09`)
 
-**Geminon v9 — index** (the structured source data):
+**Geminon — index** (the structured source data):
 
 | config  | `public` | `sensitive` |
 |---------|---------:|------------:|
 | `index` |      480 |         120 |
 
-**Geminon v9 — corpus** (articles per slice):
+**Geminon — corpus** (articles per slice):
 
 | config          |     `all` |    `train` |    `val` |   `test` |
 |-----------------|----------:|-----------:|---------:|---------:|
@@ -197,26 +197,26 @@ load_dataset("ContinuousBench/News", split="val", revision="v5")
 | `corpus_medium` | 1,000,120 |    900,108 |   50,006 |   50,006 |
 | `corpus_small`  |   200,120 |    180,108 |   10,006 |   10,006 |
 
-**Geminon v9 — QA** (QAs per slice):
+**Geminon — QA** (QAs per slice):
 
 - `qa_medium` — 8,400 QAs across 4 splits: `public_val` (3,360), `public_test` (3,360), `sensitive_val` (840), `sensitive_test` (840)
-- `qa_small` — same counts, with `supports` filtered to articles in `corpus_small`
+- `qa_small`  — same counts, with `supports` filtered to articles in `corpus_small`
 
-**News v5 — corpus** (articles per slice):
+**News — corpus** (articles per slice; `small ⊆ medium ⊆ large` by construction):
 
 | config          |     `all` |    `train` |    `val` |   `test` |
 |-----------------|----------:|-----------:|---------:|---------:|
 | `corpus_large`  | 1,768,567 |  1,591,710 |   88,428 |   88,429 |
-| `corpus_medium` |   465,966 |    419,369 |   23,298 |   23,299 |
+| `corpus_medium` |   580,582 |    522,523 |   29,029 |   29,030 |
 | `corpus_small`  |   212,980 |    191,682 |   10,649 |   10,649 |
 
-**News v5 — QA** (default config, no `config_name` needed):
+**News — QA** (default config, no `config_name` needed):
 
-- `val`: 1,189 QAs
+- `val`:  1,189 QAs
 - `test`: 1,415 QAs (gets the per-cluster rounding remainder)
-- Total: 2,604 good QAs that pass both the `is_underspecified == False` filter and the `closedbook_gemini-2.5-pro.is_correct == False` filter
+- Total: 2,604 good QAs that pass both the `is_underspecified == False` and `closedbook_gemini-2.5-pro.is_correct == False` filters.
 
-All splits use a **seeded 90/5/5 shuffle** (`config.seed`, default 42). Train + val + test sums exactly equal the `all` slice count for every corpus config.
+All splits use a **seeded 90/5/5 shuffle** (`config.seed`, default 42). Train + val + test sums equal the `all` slice count for every corpus config.
 
 ---
 

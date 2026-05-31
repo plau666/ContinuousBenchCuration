@@ -10,16 +10,21 @@ Conformance: http://mlcommons.org/croissant/RAI/1.0
 
 NEWS_RAI = {
     "rai:dataCollection": (
-        "Articles are sourced from the Common Crawl News dataset (CC-NEWS), a continuous "
-        "monthly archive of public news pages collected by web crawls. For each version "
-        "(e.g. 2025/09), all WARC files for that month are downloaded from "
-        "data.commoncrawl.org. Article text is extracted from each crawled HTML page using "
-        "trafilatura (with metadata=True, no comments/links/tables) and a fast HTML-lang "
-        "pre-filter. After extraction, langdetect on the first 1000 characters confirms the "
-        "article is in the configured language (default: English). No human curation, no "
-        "editorial filtering of sources beyond what CC-NEWS itself includes."
+        "The dataset was constructed from the Common Crawl News dataset (CC-NEWS), a "
+        "continuous monthly archive of public news pages collected by web crawls. "
+        "For each release (e.g. 2025/09), all WARC files for the configured month are "
+        "downloaded from data.commoncrawl.org; article text is extracted from each "
+        "crawled HTML page using trafilatura (metadata=True; no comments, links, or "
+        "tables) behind a fast HTML-lang pre-filter, and langdetect on the first 1000 "
+        "characters confirms the article is in the configured language (default: "
+        "English). Source articles are selected according to the documented CC-NEWS "
+        "snapshot, language filters, article-length filters, deduplication criteria, "
+        "and availability constraints. The source articles are real-world news text "
+        "from CC-NEWS; the questions, reference answers, closed-book and open-book "
+        "answers, and judgment labels are machine-generated annotations produced by "
+        "Gemini models. No human curation or editorial filtering of sources is "
+        "performed beyond what CC-NEWS itself includes."
     ),
-    "rai:dataCollection": "The dataset was constructed from CC-NEWS articles. CC-NEWS is a Common Crawl news dataset containing news articles from news sites around the world, released as WARC files in the CC-NEWS. Source articles were selected according to the documented CC-NEWS version or date range, language filters, article-length filters, deduplication criteria, and availability constraints. The source articles are real-world news text from CC-NEWS. The questions, answers, and other labels of the QAs were produced by Gemini models as machine-generated annotations.",
     "rai:dataCollectionType": [
         "Secondary Data analysis",
         "Document analysis",

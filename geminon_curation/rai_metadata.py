@@ -28,9 +28,8 @@ GEMINON_RAI = {
         "The data carries no PII or sensitive personal information by construction."
     ],
     "rai:dataUseCases": [
-        "Benchmarking language models on factual recall over a fully controlled, fully synthetic knowledge base — no possibility of contamination from pretraining"
-        "since all Geminon names are novel portmanteaus that don't appear on the public web."
-        "Recommended uses include research on synthetic-data, machine unlearning, memorization, retrieval augmentation, etc.",
+        "Benchmarking language models on factual recall over a fully controlled, fully synthetic knowledge base — no possibility of contamination from pretraining since all Geminon names are novel portmanteaus that do not appear on the public web.",
+        "Recommended uses include research on synthetic-data benchmarks, machine unlearning, memorization, and retrieval-augmented generation.",
         "The dataset is not validated for real biological taxonomy, real game balance, Pokémon canon, demographic fairness analysis, safety evaluation involving human groups, or commercial deployment without legal/IP review."
     ],
     "rai:dataSocialImpact": "The dataset may support low-privacy-risk experimentation with synthetic data and reproducible studies of LLM-generated corpora. Risks include confusion with official Pokémon content, accidental similarity to copyrighted or trademarked fictional characters, overclaiming dataset validity, and propagation of LLM-generated stereotypes or low-quality synthetic text. Mitigations include clear synthetic-data labeling, source attribution, disclosure of Gemini model use, release of prompts/seeds where possible, deduplication and similarity checks against source names, PII/toxicity screening, and warnings against high-stakes or real-world use.",

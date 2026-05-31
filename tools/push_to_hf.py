@@ -1,94 +1,70 @@
 """Push curation outputs to HuggingFace as proper datasets with configs + tags.
 
-Two upload targets, both private by default:
+Two upload targets:
   - geminon → ContinuousBench/Geminon
   - news    → ContinuousBench/News
 
 After upload, the user can do:
 
     # Geminon index (the structured 600-creature dataset, public + sensitive)
-    load_dataset("ContinuousBench/Geminon", "index",
-                 split="public", revision="v9")     # 480 records
-    load_dataset("ContinuousBench/Geminon", "index",
-                 split="sensitive", revision="v9")  # 120 records
+    load_dataset("ContinuousBench/Geminon", "index", split="public")
+    load_dataset("ContinuousBench/Geminon", "index", split="sensitive")
 
-    # Geminon corpus (3 sizes × 4 splits)
-    load_dataset("ContinuousBench/Geminon", "corpus_large",
-                 split="train", revision="v9")
+    # Geminon corpus (3 sizes × 4 splits each)
+    load_dataset("ContinuousBench/Geminon", "corpus_large", split="train")
 
-    # Geminon QA (2 sizes × 4 splits)
-    load_dataset("ContinuousBench/Geminon", "qa_small",
-                 split="public_val", revision="v9")
+    # Geminon QA (2 sizes × 4 splits each)
+    load_dataset("ContinuousBench/Geminon", "qa_small", split="public_val")
 
-    # News corpus (3 sizes × 4 splits)
-    load_dataset("ContinuousBench/News", "corpus_large",
-                 split="train", revision="v5")
+    # News corpus (3 sizes × 4 splits each)
+    load_dataset("ContinuousBench/News", "corpus_large", split="train")
 
     # News QA (default config — no config_name needed)
-    load_dataset("ContinuousBench/News",
-                 split="val", revision="v5")
+    load_dataset("ContinuousBench/News", split="val")
 
-Concrete sizes — Geminon v9:
-
-    config           all         train       val      test
-    ──────────────────────────────────────────────────────
-    corpus_large     1,523,754   1,371,378   76,187   76,189
-    corpus_medium    1,000,120     900,108   50,006   50,006
-    corpus_small       200,120     180,108   10,006   10,006
-
-    index: 600 creatures  (public 480 + sensitive 120; the structured source)
-    qa_medium: 8,400 QAs  (public_val 3,360 + public_test 3,360 + sensitive_val 840 + sensitive_test 840)
-    qa_small:  8,400 QAs  (same counts; `supports` filtered to corpus_small articles)
-
-Concrete sizes — News v5 (articles per slice):
-
-    config           all         train       val       test
-    ──────────────────────────────────────────────────────
-    corpus_large     1,768,567   1,591,710   88,428    88,429
-    corpus_medium      465,966     419,369   23,298    23,299
-    corpus_small       212,980     191,682   10,649    10,649
-
-    qa (default): 2,604 QAs across val + test
-      val:  1,189 QAs
-      test: 1,415 QAs (gets the rounding remainder of per-cluster splits)
+    # Pin a specific release via revision=...
+    load_dataset("ContinuousBench/Geminon", "index",
+                 split="public", revision="2025_09")
 
 Authentication:
     The script auto-discovers a token in this order:
       1. --token <tok>
       2. $HF_TOKEN env var
       3. ~/.cache/huggingface/token  (set by `huggingface-cli login`)
-    Any one of those is sufficient; no need to set both HF_TOKEN and run
-    `huggingface-cli login`.
+    Any one is sufficient.
 
 The script:
-  1. Creates the repo (private if not yet existing)
-  2. Resolves all source files (following symlinks, so `all.jsonl` →
-     the real file it points at)
+  1. Creates the repo if it doesn't exist (private by default; pass
+     --public to override).
+  2. Resolves all source files, following symlinks (so `all.jsonl`
+     dereferences to the real file it points at).
   3. Builds + uploads a README.md whose YAML frontmatter declares every
-     config + split so HuggingFace's automatic data file detection picks
-     them up (no custom loader script needed)
-  4. Uploads each data file to its repo path
-  5. Tags the resulting commit with the version label so callers can pin
-     a release with revision="v9" / revision="v5"
+     config + split so HuggingFace's automatic data-file detection picks
+     them up — no custom loader script needed.
+  4. Uploads each data file to its repo path.
+  5. (Unless --skip-tag) tags the resulting commit with the version label
+     so callers can pin a release via revision=<version>.
 
 Usage:
-    # Anyone of these satisfies auth:
+    # Either of these satisfies auth:
     #   huggingface-cli login
-    # or export HF_TOKEN=hf_xxx
+    # or  export HF_TOKEN=hf_xxx
 
-    # Push geminon v9 (everything)
-    python -m tools.push_to_hf --curation geminon --version v9
-
-    # Push news v5 (everything)
-    python -m tools.push_to_hf --curation news --version v5
+    # Push everything for a version
+    python -m tools.push_to_hf --curation geminon --version 2025_09
+    python -m tools.push_to_hf --curation news    --version 2025_09
 
     # Subset / dry run
-    python -m tools.push_to_hf --curation geminon --version v9 --skip-qa
-    python -m tools.push_to_hf --curation news --version v5 --dry-run
+    python -m tools.push_to_hf --curation geminon --version 2025_09 --skip-qa
+    python -m tools.push_to_hf --curation news    --version 2025_09 --dry-run
+
+    # Push as public, skip the version tag, reuse an already-rendered README
+    python -m tools.push_to_hf --curation news --version 2025_09 \\
+        --public --skip-tag --use-local-readme
 
     # Override the local source directory
-    python -m tools.push_to_hf --curation geminon --version v9 \\
-        --local-dir /path/to/geminon_curation/output/v9
+    python -m tools.push_to_hf --curation geminon --version 2025_09 \\
+        --local-dir /path/to/geminon_curation/output/2025_09
 """
 
 import argparse
@@ -101,8 +77,8 @@ from pathlib import Path
 # Default repo names + version → revision mapping
 # ───────────────────────────────────────────────────────────────────────────
 DEFAULT_REPOS = {
-    "geminon": "ContinuousBench/Geminon", #"pl666/ContinuousBench-Geminon",
-    "news":    "ContinuousBench/News", #"pl666/ContinuousBench-News",
+    "geminon": "ContinuousBench/Geminon",
+    "news":    "ContinuousBench/News",
 }
 
 DEFAULT_LOCAL_ROOT = {
@@ -479,7 +455,7 @@ def main():
     parser.add_argument("--version", type=str, required=True,
                         help="Version label, e.g. v9 (Geminon) or v5 (News). Becomes the git tag.")
     parser.add_argument("--repo", type=str, default=None,
-                        help="Override repo id (default: pl666/ContinuousBench-{Geminon,News})")
+                        help="Override repo id (default: ContinuousBench/{Geminon,News})")
     parser.add_argument("--local-dir", type=str, default=None,
                         help="Override local source directory (default: {geminon,news}_curation/output/{version})")
     parser.add_argument("--token", type=str, default=None,

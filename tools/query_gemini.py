@@ -5,9 +5,9 @@ to the Gemini API. Saves responses as JSONL with the original fields
 plus a "response" field.
 
 Usage:
-    python query_gemini.py \
-        --input output/v9/naming_prompts.jsonl \
-        --output output/v9/naming_responses.jsonl \
+    python -m tools.query_gemini \
+        --input  geminon_curation/output/2025_09/prompts/naming_prompts.jsonl \
+        --output geminon_curation/output/2025_09/responses/naming_responses.jsonl \
         --api-keys KEY1,KEY2,KEY3 \
         --model gemini-2.5-flash \
         --max-workers 8 \

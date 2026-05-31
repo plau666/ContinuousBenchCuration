@@ -14,7 +14,7 @@ pip install -r ../requirements.txt
 pip install warcio trafilatura langdetect sentence-transformers torch python-igraph leidenalg
 ```
 
-The 17 stages have very different runtime profiles. The pre-LLM stages (download → cluster) are heavy compute; the LLM stages are mostly bookkeeping around `tools.query_gemini`.
+The 19 stages have very different runtime profiles. The pre-LLM stages (download → cluster) are heavy compute; the LLM stages are mostly bookkeeping around `tools.query_gemini`.
 
 ---
 
@@ -39,15 +39,15 @@ The 17 stages have very different runtime profiles. The pre-LLM stages (download
 | 15 | `15_save_support_prompts.py` | no | Run top-k retrieval on **both** QA embed channels, union per QA, group by article, save `support_prompts.jsonl` and `openbook_prompts.jsonl` |
 | 16 | `16_apply_support.py` | no | Parse both response files. Writes intermediate `qa/qas_with_supports.jsonl` and post-processed `qa/final/all_qas.jsonl`. |
 | 17 | `17_filter_good_qas.py` | no | Filter to good QAs (`is_underspecified == False` AND `closedbook…is_correct == False`), flatten to a list-of-dicts schema, and split per-cluster (seeded) into val/test halves. Writes `qa/final/filtered/{good_qas,val,test}.jsonl`. |
-| 18 | `18_split_corpus.py` | no | Split the cleaned corpus into three slices (`large` = full, `median` = clustered, `small` = supports). For each, create a subfolder `corpus/{large,medium,small}/` containing a symlink to the source file plus a seeded **90/5/5 train/val/test split**. Idempotent: if a slice file already exists it's reused. |
-| 19 | `19_compute_stats.py` | no | QA counts + judge breakdown + support distribution; per-slice token-count stats and KDE plots for `large`, `median`, `small`; overlay comparison plot |
+| 18 | `18_split_corpus.py` | no | Split the cleaned corpus into three nested slices: `large` (full corpus), `medium` (clustered articles ∪ `small`), and `small` (union of every good QA's `supports`). For each slice, create a subfolder `corpus/{large,medium,small}/` containing a symlink to the source file plus a seeded **90/5/5 train/val/test split**. Idempotent: if a slice file already exists it's reused. |
+| 19 | `19_compute_stats.py` | no | Per-split QA support-count stats and a histogram across val+test; per-slice token-count stats (Gemma-3 tokenizer or whitespace fallback) and KDE plots with inline cutoff annotations for `large`, `medium`, `small`. |
 
 LLM calls happen **outside** the pipeline. After every `*_save_*_prompts.py` stage, run:
 
 ```bash
 python -m tools.query_gemini \
-    --input news_curation/output/v1/prompts/<file>.jsonl \
-    --output news_curation/output/v1/responses/<file>.jsonl \
+    --input news_curation/output/2025_09/prompts/<file>.jsonl \
+    --output news_curation/output/2025_09/responses/<file>.jsonl \
     --api-keys $GEMINI_KEY1,$GEMINI_KEY2 \
     --model gemini-2.5-pro \
     --max-workers 32 --resume
@@ -62,63 +62,63 @@ python -m tools.query_gemini \
 cd news_curation
 
 # 1-3. Pre-LLM ingest
-python 01_download_warcs.py --config config.yaml      # downloads to output/v1/warcs/
-python 02_extract_articles.py --config config.yaml    # extracts to output/v1/extracted/
-python 03_cleanup_dedup.py --config config.yaml       # → output/v1/cleaned/articles.jsonl
+python 01_download_warcs.py --config config.yaml      # downloads to output/2025_09/warcs/
+python 02_extract_articles.py --config config.yaml    # extracts to output/2025_09/extracted/
+python 03_cleanup_dedup.py --config config.yaml       # → output/2025_09/cleaned/articles.jsonl
 
 # 4-5. Embeddings + clustering (heavy GPU)
-python 04_compute_embeddings.py --config config.yaml  # → output/v1/embeds/text_embeds.npy
-python 05_local_cluster.py --config config.yaml       # → output/v1/clustered/clustered_articles.json
+python 04_compute_embeddings.py --config config.yaml  # → output/2025_09/embeds/text_embeds.npy
+python 05_local_cluster.py --config config.yaml       # → output/2025_09/clustered/clustered_articles.json
 
 # 6-7. Fact extraction (LLM)
 python 06_save_fact_prompts.py --config config.yaml
 cd ..
 python -m tools.query_gemini \
-    --input news_curation/output/v1/prompts/fact_prompts.jsonl \
-    --output news_curation/output/v1/responses/fact_responses.jsonl \
+    --input news_curation/output/2025_09/prompts/fact_prompts.jsonl \
+    --output news_curation/output/2025_09/responses/fact_responses.jsonl \
     --api-keys $GEMINI_KEY1,$GEMINI_KEY2 --model gemini-2.5-pro
 cd news_curation
-python 07_apply_facts.py --config config.yaml         # → output/v1/qa/facts.jsonl
+python 07_apply_facts.py --config config.yaml         # → output/2025_09/qa/facts.jsonl
 
 # 8-9. QA generation (LLM)
 python 08_save_qa_prompts.py --config config.yaml
-cd ..; python -m tools.query_gemini --input news_curation/output/v1/prompts/qa_prompts.jsonl \
-    --output news_curation/output/v1/responses/qa_responses.jsonl \
+cd ..; python -m tools.query_gemini --input news_curation/output/2025_09/prompts/qa_prompts.jsonl \
+    --output news_curation/output/2025_09/responses/qa_responses.jsonl \
     --api-keys $GEMINI_KEY1,$GEMINI_KEY2 --model gemini-2.5-pro; cd news_curation
-python 09_apply_qas.py --config config.yaml           # → output/v1/qa/qas.jsonl
+python 09_apply_qas.py --config config.yaml           # → output/2025_09/qa/qas.jsonl
 
 # 10-11. Zero-shot (LLM)
 python 10_save_zeroshot_prompts.py --config config.yaml
-cd ..; python -m tools.query_gemini --input news_curation/output/v1/prompts/zeroshot_prompts.jsonl \
-    --output news_curation/output/v1/responses/zeroshot_responses.jsonl \
+cd ..; python -m tools.query_gemini --input news_curation/output/2025_09/prompts/zeroshot_prompts.jsonl \
+    --output news_curation/output/2025_09/responses/zeroshot_responses.jsonl \
     --api-keys $GEMINI_KEY1,$GEMINI_KEY2 --model gemini-2.5-pro; cd news_curation
-python 11_apply_zeroshot.py --config config.yaml      # → output/v1/qa/qas_with_zeroshot.jsonl
+python 11_apply_zeroshot.py --config config.yaml      # → output/2025_09/qa/qas_with_zeroshot.jsonl
 
 # 12-13. Judge closed-book (LLM)
 python 12_save_judge_prompts.py --config config.yaml
-cd ..; python -m tools.query_gemini --input news_curation/output/v1/prompts/judge_prompts.jsonl \
-    --output news_curation/output/v1/responses/judge_responses.jsonl \
+cd ..; python -m tools.query_gemini --input news_curation/output/2025_09/prompts/judge_prompts.jsonl \
+    --output news_curation/output/2025_09/responses/judge_responses.jsonl \
     --api-keys $GEMINI_KEY1,$GEMINI_KEY2 --model gemini-2.5-pro; cd news_curation
-python 13_apply_judge.py --config config.yaml         # → output/v1/qa/qas_judged.jsonl
+python 13_apply_judge.py --config config.yaml         # → output/2025_09/qa/qas_judged.jsonl
 
 # 14-16. Support check + open-book (embeddings + retrieval + 2 LLM passes)
 python 14_compute_support_embeddings.py --config config.yaml
 python 15_save_support_prompts.py --config config.yaml   # writes BOTH support_prompts.jsonl and openbook_prompts.jsonl
 cd ..
-python -m tools.query_gemini --input news_curation/output/v1/prompts/support_prompts.jsonl \
-    --output news_curation/output/v1/responses/support_responses.jsonl \
+python -m tools.query_gemini --input news_curation/output/2025_09/prompts/support_prompts.jsonl \
+    --output news_curation/output/2025_09/responses/support_responses.jsonl \
     --api-keys $GEMINI_KEY1,$GEMINI_KEY2 --model gemini-2.5-pro
-python -m tools.query_gemini --input news_curation/output/v1/prompts/openbook_prompts.jsonl \
-    --output news_curation/output/v1/responses/openbook_responses.jsonl \
+python -m tools.query_gemini --input news_curation/output/2025_09/prompts/openbook_prompts.jsonl \
+    --output news_curation/output/2025_09/responses/openbook_responses.jsonl \
     --api-keys $GEMINI_KEY1,$GEMINI_KEY2 --model gemini-2.5-flash-lite
 cd news_curation
-python 16_apply_support.py --config config.yaml       # → output/v1/qa/qas_with_supports.jsonl
+python 16_apply_support.py --config config.yaml       # → output/2025_09/qa/qas_with_supports.jsonl
 
 # 17. Filter to "good" QAs + flatten + per-cluster val/test split
-python 17_filter_good_qas.py --config config.yaml    # → output/v1/qa/final/filtered/{good_qas,val,test}.jsonl
+python 17_filter_good_qas.py --config config.yaml    # → output/2025_09/qa/final/filtered/{good_qas,val,test}.jsonl
 
-# 18. Split corpus into large/median/small
-python 18_split_corpus.py --config config.yaml       # → output/v1/corpus/{large,median,small}.jsonl
+# 18. Split corpus into large/medium/small (medium = clustered ∪ small)
+python 18_split_corpus.py --config config.yaml       # → output/2025_09/corpus/{large,medium,small}.jsonl
 
 # 19. Stats
 python 19_compute_stats.py --config config.yaml
@@ -129,7 +129,7 @@ python 19_compute_stats.py --config config.yaml
 ## Output structure
 
 ```
-output/v1/
+output/2025_09/
 ├── warcs/                            # Stage 1
 │   └── *.warc.gz
 ├── extracted/                        # Stage 2 (per-WARC JSONL)
@@ -178,17 +178,17 @@ output/v1/
 │   ├── doc_index.jsonl               # one row per cleaned article: {article_idx}
 │   ├── doc_embeds.npy                # encodes "title: {t} | text: {body[:1024 tok]}" with `task: clustering | query: ` (1100 seq)
 │   └── doc_embeds_config.json
-├── corpus/                           # Stage 18 — three corpus slices, each with a 90/5/5 split
-│   ├── large.jsonl                   # full deduped corpus (byte-equal copy of cleaned/articles.jsonl)
-│   ├── median.jsonl                  # union of articles in clustered_articles.json (deduped, sorted by article_idx)
+├── corpus/                           # Stage 18 — three nested slices, each with a 90/5/5 split
+│   ├── large.jsonl                   # full deduped corpus (copy of cleaned/articles.jsonl, with article_idx)
+│   ├── medium.jsonl                  # clustered articles ∪ small (so small ⊆ medium ⊆ large)
 │   ├── small.jsonl                   # union of `supports` across good_qas.jsonl
 │   ├── large/
-│   │   ├── all.jsonl  → ../large.jsonl  (relative symlink — uniform name across slices)
+│   │   ├── all.jsonl  → ../large.jsonl   (relative symlink — uniform name across slices)
 │   │   ├── train.jsonl               # 90% (seeded shuffle)
 │   │   ├── val.jsonl                 # 5%
 │   │   └── test.jsonl                # 5% (gets the rounding remainder)
 │   ├── medium/
-│   │   ├── all.jsonl  → ../median.jsonl
+│   │   ├── all.jsonl  → ../medium.jsonl
 │   │   ├── train.jsonl
 │   │   ├── val.jsonl
 │   │   └── test.jsonl
@@ -198,18 +198,12 @@ output/v1/
 │       ├── val.jsonl
 │       └── test.jsonl
 └── stats/                            # Stage 19
-    ├── qa_summary.json                # QA stage counts + judge breakdown + support stats + per-slice token summary
-    ├── support_count_dist.png
-    ├── token_counts_large.json        # one entry per article in corpus/large.jsonl
-    ├── token_counts_median.json       # one entry per article in corpus/median.jsonl
-    ├── token_counts_small.json        # one entry per article in corpus/small.jsonl
-    ├── token_stats_large.json         # n, mean, std, min, p25, median, p75, p90, p99, max
-    ├── token_stats_median.json
-    ├── token_stats_small.json
-    ├── token_dist_large.png           # per-slice KDE plot
-    ├── token_dist_median.png
-    ├── token_dist_small.png
-    └── token_dist_overlay.png         # all three slices on one axis
+    ├── qa_summary.json                       # cluster + QA counts + per-split support stats
+    ├── support_stats_per_split.json          # {val, test} → {n_qas, mean, median, p25, p75, std, max}
+    ├── support_count_dist.png                # histogram across val + test
+    ├── token_counts_{large,medium,small}.json   # one entry per article in corpus/<slice>.jsonl
+    ├── token_stats_{large,medium,small}.json    # n, mean, std, min, p25, median, p75, p90, p99, max
+    └── token_dist_News_{Large,Medium,Small}.png # per-slice KDE plot with inline cutoff annotations
 ```
 
 ---
@@ -374,16 +368,10 @@ Same as geminon — uses [`tools/push_to_hf.py`](../tools/push_to_hf.py):
 ```bash
 export HF_TOKEN=hf_xxx
 
-python -m tools.push_to_hf \
-    --repo ... \
-    --curation news \
-    --version v1 \
-    --local-dir news_curation/output/v1 \
-    --include qa cleaned/articles.jsonl stats \
-    --private
+python -m tools.push_to_hf --curation news --version 2025_09
 ```
 
-Files land at `news/v1/...` inside the dataset repo.
+Defaults: target repo is `ContinuousBench/News`, the commit is tagged `2025_09`. Pass `--repo <org>/<name>` to publish under a different org, or `--public` / `--skip-tag` to override the defaults. See `python -m tools.push_to_hf --help` for the full flag list.
 
 ---
 
